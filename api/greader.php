@@ -283,7 +283,7 @@ final class GReaderAPI extends Handler{
 
 		if ($loginResponse && isset($loginResponse['status']) && $loginResponse['status'] == 0) {
 			$session_id = $loginResponse['content']['session_id'];
-			
+
 			// Format the response as expected by Google Reader API clients
 			$auth = $email . '/' . $session_id;
 			$response = "SID={$auth}\n";
@@ -324,7 +324,7 @@ final class GReaderAPI extends Handler{
 
 	/** @return never */
 	private static function userInfo() {
-		$user = $_SESSION['name'];
+		$user = 'freshapi-user';//$_SESSION['name'];
 		exit(json_encode(array(
 				'userId' => $user,
 				'userName' => $user,
@@ -366,22 +366,25 @@ final class GReaderAPI extends Handler{
 
 		// Fetch unread counts
 		$countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
+
 		if ($countersResponse && isset($countersResponse['status']) && $countersResponse['status'] == 0) {
 			foreach ($countersResponse['content'] as $counter) {
-				if ($counter['type'] == 'cat') {
-					$categoryTitle = $counter['title'] ?? '';
-					foreach ($tags as &$tag) {
-						if ($tag['id'] === 'user/-/label/' . $categoryTitle) {
-							$tag['unread_count'] = $counter['counter'];
-							break;
+				if (isset($counter['kind'])) {
+					if ($counter['kind'] == 'cat') {
+						$categoryTitle = $counter['title'] ?? '';
+						foreach ($tags as &$tag) {
+							if ($tag['id'] === 'user/-/label/' . $categoryTitle) {
+								$tag['unread_count'] = $counter['counter'];
+								break;
+							}
 						}
-					}
-				} elseif ($counter['type'] == 'label') {
-					$labelTitle = $counter['title'] ?? '';
-					foreach ($tags as &$tag) {
-						if ($tag['id'] === 'user/-/label/' . $labelTitle) {
-							$tag['unread_count'] = $counter['counter'];
-							break;
+					} elseif ($counter['kind'] == 'label') {
+						$labelTitle = $counter['title'] ?? '';
+						foreach ($tags as &$tag) {
+							if ($tag['id'] === 'user/-/label/' . $labelTitle) {
+								$tag['unread_count'] = $counter['counter'];
+								break;
+							}
 						}
 					}
 				}
@@ -444,8 +447,8 @@ final class GReaderAPI extends Handler{
 							'label' => $categoryMap[$feed['cat_id']]
 						]
 					],
-					'url' => $feed['feed_url'],
-					'htmlUrl' => $feed['site_url'],
+					'url' => isset($feed['feed_url']) ? $feed['feed_url'] : null,
+					'htmlUrl' => isset($feed['site_url']) ? $feed['site_url'] : null,
 					'iconUrl' => TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
 				];
 			}
@@ -771,25 +774,34 @@ final class GReaderAPI extends Handler{
 			$params['feed_id'] = -1; // Starred articles in TTRSS
 			$params['view_mode'] = 'marked';
 		}
-		error_log(print_r($params, true));
+		//error_log(print_r($params, true));
 		$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
 		if ($response && isset($response['status']) && $response['status'] == 0) {
 			$itemRefs = [];
 			foreach ($response['content'] as $article) {
 				$itemRefs[] = [
-					'id' => 'tag:google.com,2005:reader/item/' . $article['id'],
-					'directStreamIds' => ['feed/' . $article['feed_id']],
-					'timestampUsec' => $article['updated'] . '000000',
+					'id' => '' . $article['id'] //64-bit decimal
+					//'id' => 'tag:google.com,2005:reader/item/' . $article['id'],
+					//'directStreamIds' => ['feed/' . $article['feed_id']],
+					//'timestampUsec' => $article['updated'] . '000000',
 				];
 			}
 	
 			$result = [
 				'itemRefs' => $itemRefs,
 			];
-	
+	/*
 			if (count($itemRefs) >= $count) {
 				$result['continuation'] = $params['skip'] + $count;
 			}
+	*/
+			if (count($response['content']) >= $count) {
+				$entryId = end($response['content']);
+				if ($entryId != false) {
+					$response['continuation'] = '' . $entryId;
+				}
+			}
+
 			echo json_encode($result, JSON_OPTIONS);
 			exit();
 		}
@@ -819,12 +831,22 @@ final class GReaderAPI extends Handler{
 				$items[] = self::convertTtrssArticleToGreaderFormat($article);
 			}
 		}
+		// Sort items based on the order parameter
+		if ($order === 'o') {  // Ascending order
+			usort($items, function($a, $b) {
+				return $a['published'] - $b['published'];
+			});
+		} else {  // Descending order (default)
+			usort($items, function($a, $b) {
+				return $b['published'] - $a['published'];
+			});
+		}
 		$result = [
 			'id' => 'user/-/state/com.google/reading-list',
 			'updated' => time(),
 			'items' => $items,
 		];
-		error_log(print_r($result['items'][0], true));
+		//error_log(print_r($result['items'][0], true));
 		echo json_encode($result, JSON_OPTIONS);
 		exit();
 	}
@@ -879,8 +901,8 @@ final class GReaderAPI extends Handler{
 		//error_log(print_r($article, true));
 		return [
 			'id' => 'tag:google.com,2005:reader/item/' . self::dec2hex(strval($article['id'])),
-			'crawlTimeMsec' => time() . '000',//strval(dateAdded(true, true)),
-			'timestampUsec' => '' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
+			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
+			'timestampUsec' => $article['updated'] . '000000', //'' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
 			'published' => $article['updated'],
 			'title' => escapeToUnicodeAlternative($article['title'],true),
 			//'updated' => date(DATE_ATOM, $article['updated']),
@@ -920,29 +942,32 @@ final class GReaderAPI extends Handler{
 
 		if ($a === 'user/-/state/com.google/read') {
 			$action = 'updateArticle';
+			$mode = 0; // Add Read Flag
 			$field = 2; // Mark as read
 		} elseif ($r === 'user/-/state/com.google/read') {
 			$action = 'updateArticle';
-			$field = 0; // Mark as unread
+			$mode = 1; // Remove Read Flag
+			$field = 2; // Mark as unread
 		} elseif ($a === 'user/-/state/com.google/starred') {
 			$action = 'updateArticle';
-			$field = 1; // Star
+			$mode = 1; // Add Star
+			$field = 0; // Type is Star
 		} elseif ($r === 'user/-/state/com.google/starred') {
 			$action = 'updateArticle';
-			$field = 3; // Unstar
+			$mode = 0; // Remove Star
+			$field = 0; // Unstar
 		}
 
-		if ($action && $field !== 0) {
+		if ($action) {
 			foreach ($e_ids as $e_id) {
 				$article_id = hex2dec(basename($e_id));
-				self::callTinyTinyRssApi($action, [
+				$result = self::callTinyTinyRssApi($action, [
 					'article_ids' => $article_id,
-					'mode' => $field,
+					'mode' => $mode,
 					'field' => $field
 				], $session_id);
 			}
 		}
-
 		exit('OK');
 	}
 
@@ -973,8 +998,7 @@ final class GReaderAPI extends Handler{
         error_log(print_r($_GET,true));
 		error_log(print_r('POST=',true));
 		error_log(print_r($_POST,true));
-		error_log(print_r('SESSION=',true));
-		error_log(print_r($_SESSION,true));
+
 		//error_log(print_r('SERVER=',true));
 		//error_log(print_r($_SERVER,true));
 		$pathInfo = urldecode($pathInfo);
@@ -1162,15 +1186,10 @@ final class GReaderAPI extends Handler{
 					self::token($session_id);
 					// Always exits
 				case 'user-info':
-
-
-
-					
 					self::userInfo();
 					// Always exits
 			}
 		}
-
 		self::badRequest();
 	}
 }
