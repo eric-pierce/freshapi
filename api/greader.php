@@ -120,6 +120,19 @@ function multiplePosts(string $name): array {
 	return $result;
 }
 
+function dateAdded(bool $raw = false, bool $microsecond = false) {
+	if ($raw) {
+		if ($microsecond) {
+			return time();
+		} else {
+			return (int)substr(microtime(true), 0, -6);
+		}
+	} else {
+		$date = (int)substr(microtime(true), 0, -6);
+		return timestamptodate($date);
+	}
+}
+
 function debugInfo(): string {
 	if (function_exists('getallheaders')) {
 		$ALL_HEADERS = getallheaders();
@@ -215,6 +228,12 @@ final class GReaderAPI extends Handler{
 		exit();
 	}
 
+	private static function dec2hex($dec): string {
+		return PHP_INT_SIZE < 8 ? // 32-bit ?
+			str_pad(gmp_strval(gmp_init($dec, 10), 16), 16, '0', STR_PAD_LEFT) :
+			str_pad(dechex((int)($dec)), 16, '0', STR_PAD_LEFT);
+	}
+
     // Function to make API requests with session management
     private static function callTinyTinyRssApi($operation, $params = [], $session_id = null) {
         if ($session_id) {
@@ -280,7 +299,7 @@ final class GReaderAPI extends Handler{
 	}
 
 	/** @return never */
-	private static function token($session_id) {
+	private static function token(string $session_id) {
 		//http://blog.martindoms.com/2009/08/15/using-the-google-reader-api-part-1/
 		//https://github.com/ericmann/gReader-Library/blob/master/greader.class.php
 		if ($session_id === null) {
@@ -294,18 +313,9 @@ final class GReaderAPI extends Handler{
 	}
 
 
-	private static function checkToken(?FreshRSS_UserConfiguration $conf, string $token): bool {
+	private static function checkToken(string $token, string $session_id): bool {
 		//http://code.google.com/p/google-reader-api/wiki/ActionToken
-		$user = Minz_User::name();
-		if ($user === null || $conf === null || !FreshRSS_Context::hasSystemConf()) {
-			self::unauthorized();
-		}
-		if ($user !== Minz_User::INTERNAL_USER && (	//TODO: Check security consequences
-			$token === '' || //FeedMe
-			$token === 'x')) { //Reeder
-			return true;
-		}
-		if ($token === str_pad(sha1(FreshRSS_Context::systemConf()->salt . $user . $conf->apiPasswordHash), 57, 'Z')) {
+		if ($token === str_pad($session_id, 57, 'Z')) {
 			return true;
 		}
 		error_log('Invalid POST token: ' . $token);
@@ -692,7 +702,6 @@ final class GReaderAPI extends Handler{
 				break;
 		}
 		$streamId = (int)$streamId;
-        //error_log(print_r($_SERVER, true));
 
 		switch ($filter_target) {
 			case 'user/-/state/com.google/read':
@@ -744,7 +753,7 @@ final class GReaderAPI extends Handler{
 		header('Content-Type: application/json; charset=UTF-8');
 	
 		$params = [
-			'limit' => $count,
+			'limit' => $count, //appears to have a limit of 100?
 			'skip' => $continuation ? intval($continuation) : 0,
 			'since_id' => $start_time,
 			'include_attachments' => false,
@@ -789,32 +798,33 @@ final class GReaderAPI extends Handler{
 	}
 	private static function streamContentsItems(array $e_ids, string $order, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-
-		// Prepare a comma-separated list of article IDs
-		$article_ids = [];
-		foreach ($e_ids as $e_id) {
-			$article_ids[] = str_replace("tag:google.com,2005:reader/item/", "", $e_id);
+		foreach ($e_ids as $i => $e_id) {
+			// https://feedhq.readthedocs.io/en/latest/api/terminology.html#items
+			if (!ctype_digit($e_id) || $e_id[0] === '0') {
+				
+				$e_ids[$i] = basename($e_id);	//Strip prefix 'tag:google.com,2005:reader/item/'
+			}
 		}
-		$article_ids_string = implode(',', $article_ids);
 
+		$article_ids_string = implode(',', $e_ids);
+		
 		// Make a single API call for all requested articles
 		$response = self::callTinyTinyRssApi('getArticle', [
 			'article_id' => $article_ids_string,
 		], $session_id);
-
+		
 		$items = [];
 		if ($response && isset($response['status']) && $response['status'] == 0 && !empty($response['content'])) {
 			foreach ($response['content'] as $article) {
 				$items[] = self::convertTtrssArticleToGreaderFormat($article);
 			}
 		}
-
 		$result = [
 			'id' => 'user/-/state/com.google/reading-list',
 			'updated' => time(),
 			'items' => $items,
 		];
-
+		error_log(print_r($result['items'][0], true));
 		echo json_encode($result, JSON_OPTIONS);
 		exit();
 	}
@@ -868,27 +878,35 @@ final class GReaderAPI extends Handler{
 	private static function convertTtrssArticleToGreaderFormat($article) {
 		//error_log(print_r($article, true));
 		return [
-			'id' => 'tag:google.com,2005:reader/item/' . $article['id'],
-			'title' => $article['title'],
-			'published' => date(DATE_ATOM, $article['updated']),
-			'updated' => date(DATE_ATOM, $article['updated']),
+			'id' => 'tag:google.com,2005:reader/item/' . self::dec2hex(strval($article['id'])),
+			'crawlTimeMsec' => time() . '000',//strval(dateAdded(true, true)),
+			'timestampUsec' => '' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
+			'published' => $article['updated'],
+			'title' => escapeToUnicodeAlternative($article['title'],true),
+			//'updated' => date(DATE_ATOM, $article['updated']),
+			'canonical' => [
+				['href' => htmlspecialchars_decode($article['link'], ENT_QUOTES)]
+			],
 			'alternate' => [
 				[
-					'href' => $article['link'],
-					'type' => 'text/html',
+					'href' => htmlspecialchars_decode($article['link'], ENT_QUOTES),
+					//'type' => 'text/html',
 				]
-			],
-			'summary' => [
-				'content' => $article['content'],
-			],
-			'origin' => [
-				'streamId' => 'feed/' . $article['feed_id'],
-				'title' => $article['feed_title'],
 			],
 			'categories' => [
 				'user/-/state/com.google/' . ($article['unread'] ? 'unread' : 'read'),
 				'user/-/label/' . $article['feed_title'],
 			],
+			'origin' => [
+				'streamId' => 'feed/' . $article['feed_id'],
+				'htmlUrl' => htmlspecialchars_decode($article['link'], ENT_QUOTES),
+				'title' => $article['feed_title'],
+			],
+			'summary' => [
+				//'content' => $article['content'],
+				'content' => mb_strcut($article['content'], 0, 500000, 'UTF-8'),
+			],
+			'author' => $article['author'],
 		];
 	}
 
@@ -949,8 +967,16 @@ final class GReaderAPI extends Handler{
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
+		error_log(print_r('PATH_INFO=',true));
         error_log(print_r($pathInfo,true));
+		error_log(print_r('GET=',true));
         error_log(print_r($_GET,true));
+		error_log(print_r('POST=',true));
+		error_log(print_r($_POST,true));
+		error_log(print_r('SESSION=',true));
+		error_log(print_r($_SESSION,true));
+		//error_log(print_r('SERVER=',true));
+		//error_log(print_r($_SERVER,true));
 		$pathInfo = urldecode($pathInfo);
 		$pathInfo = '' . preg_replace('%^(/api)?(/greader\.php)?%', '', $pathInfo);	//Discard common errors
 		if ($pathInfo == '' && empty($_SERVER['QUERY_STRING'])) {
@@ -1101,7 +1127,7 @@ final class GReaderAPI extends Handler{
 					// Always exits
 				case 'edit-tag':	//http://blog.martindoms.com/2010/01/20/using-the-google-reader-api-part-3/
 					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken(FreshRSS_Context::userConf(), $token);
+					self::checkToken($token, $session_id);
 					$a = $_POST['a'] ?? '';	//Add:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$r = $_POST['r'] ?? '';	//Remove:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$e_ids = multiplePosts('i');	//item IDs
@@ -1109,14 +1135,14 @@ final class GReaderAPI extends Handler{
 					// Always exits
 				case 'rename-tag':	//https://github.com/theoldreader/api
 					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken(FreshRSS_Context::userConf(), $token);
+					self::checkToken($token, $session_id);
 					$s = $_POST['s'] ?? '';	//user/-/label/Folder
 					$dest = $_POST['dest'] ?? '';	//user/-/label/NewFolder
 					self::renameTag($s, $dest);
 					// Always exits
 				case 'disable-tag':	//https://github.com/theoldreader/api
 					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken(FreshRSS_Context::userConf(), $token);
+					self::checkToken($token, $session_id);
 					$s_s = multiplePosts('s');
 					foreach ($s_s as $s) {
 						self::disableTag($s);	//user/-/label/Folder
@@ -1124,7 +1150,7 @@ final class GReaderAPI extends Handler{
 					// Always exits
 				case 'mark-all-as-read':
 					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken(FreshRSS_Context::userConf(), $token);
+					self::checkToken($token, $session_id);
 					$streamId = trim($_POST['s'] ?? '');
 					$ts = trim($_POST['ts'] ?? '0');	//Older than timestamp in nanoseconds
 					if (!ctype_digit($ts)) {
@@ -1136,6 +1162,10 @@ final class GReaderAPI extends Handler{
 					self::token($session_id);
 					// Always exits
 				case 'user-info':
+
+
+
+					
 					self::userInfo();
 					// Always exits
 			}
