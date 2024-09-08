@@ -306,8 +306,7 @@ final class GReaderAPI extends Handler{
 			self::unauthorized();
 		}
 		//Minz_Log::debug('token('. $user . ')', API_LOG);	//TODO: Implement real token that expires
-		$token = str_pad($session_id, 57, 'Z');	//Must have 57 characters
-
+		$token = substr(hash('sha256', $session_id . 'salt'),0,57);	//Must have 57 characters
 		echo $token, "\n";
 		exit();
 	}
@@ -315,7 +314,7 @@ final class GReaderAPI extends Handler{
 
 	private static function checkToken(string $token, string $session_id): bool {
 		//http://code.google.com/p/google-reader-api/wiki/ActionToken
-		if ($token === str_pad($session_id, 57, 'Z')) {
+		if ($token === substr(hash('sha256', $session_id . 'salt'),0,57)) {
 			return true;
 		}
 		error_log('Invalid POST token: ' . $token);
