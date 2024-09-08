@@ -457,12 +457,121 @@ final class GReaderAPI extends Handler{
 		exit();
 	}
 
+/**
+ * @param array<string> $streamNames
+ * @param array<string> $titles
+ * @return never
+ */
+private static function subscriptionEdit(array $streamNames, array $titles, string $action, string $add = '', string $remove = '', string $session_id) {
+    switch ($action) {
+        case 'subscribe':
+        case 'unsubscribe':
+        case 'edit':
+            break;
+        default:
+            self::badRequest();
+    }
+
+    $categoryId = 0;
+    if ($add != '' && strpos($add, 'user/-/label/') === 0) {
+        $categoryName = substr($add, 13);
+        $categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+        if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
+            foreach ($categoryResponse['content'] as $category) {
+                if ($category['title'] == $categoryName) {
+                    $categoryId = $category['id'];
+                    break;
+                }
+            }
+        }
+        if ($categoryId == 0) {
+            // Category doesn't exist, create it
+            $createCategoryResponse = self::callTinyTinyRssApi('addCategory', ['title' => $categoryName], $session_id);
+            if ($createCategoryResponse && isset($createCategoryResponse['status']) && $createCategoryResponse['status'] == 0) {
+                $categoryId = $createCategoryResponse['content']['id'];
+            }
+        }
+    }
+
+    foreach ($streamNames as $i => $streamUrl) {
+        if (strpos($streamUrl, 'feed/') === 0) {
+            $streamUrl = substr($streamUrl, 5);
+            $feedId = 0;
+            if (is_numeric($streamUrl)) {
+                $feedId = (int)$streamUrl;
+            } else {
+                $feedResponse = self::callTinyTinyRssApi('getFeeds', [], $session_id);
+                if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
+                    foreach ($feedResponse['content'] as $feed) {
+                        if ($feed['feed_url'] == $streamUrl) {
+                            $feedId = $feed['id'];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $title = $titles[$i] ?? '';
+
+            switch ($action) {
+                case 'subscribe':
+                    if ($feedId == 0) {
+                        $subscribeResponse = self::callTinyTinyRssApi('subscribeToFeed', [
+                            'feed_url' => $streamUrl,
+                            'category_id' => $categoryId,
+                            'title' => $title,
+                        ], $session_id);
+                        if (!($subscribeResponse && isset($subscribeResponse['status']) && $subscribeResponse['status'] == 0)) {
+                            self::badRequest();
+                        }
+                    }
+                    break;
+                case 'unsubscribe':
+                    if ($feedId > 0) {
+                        $unsubscribeResponse = self::callTinyTinyRssApi('unsubscribeFeed', [
+                            'feed_id' => $feedId,
+                        ], $session_id);
+                        if (!($unsubscribeResponse && isset($unsubscribeResponse['status']) && $unsubscribeResponse['status'] == 0)) {
+                            self::badRequest();
+                        }
+                    }
+                    break;
+                case 'edit':
+                    if ($feedId > 0) {
+                        if ($categoryId > 0) {
+                            $moveFeedResponse = self::callTinyTinyRssApi('moveFeed', [
+                                'feed_id' => $feedId,
+                                'category_id' => $categoryId,
+                            ], $session_id);
+                            if (!($moveFeedResponse && isset($moveFeedResponse['status']) && $moveFeedResponse['status'] == 0)) {
+                                self::badRequest();
+                            }
+                        }
+                        if ($title != '') {
+                            $renameFeedResponse = self::callTinyTinyRssApi('renameFeed', [
+                                'feed_id' => $feedId,
+                                'title' => $title,
+                            ], $session_id);
+                            if (!($renameFeedResponse && isset($renameFeedResponse['status']) && $renameFeedResponse['status'] == 0)) {
+                                self::badRequest();
+                            }
+                        }
+                    } else {
+                        self::badRequest();
+                    }
+                    break;
+            }
+        }
+    }
+    exit('OK');
+}
+
 	/**
 	 * @param array<string> $streamNames
 	 * @param array<string> $titles
 	 * @return never
 	 */
-	private static function subscriptionEdit(array $streamNames, array $titles, string $action, string $add = '', string $remove = '') {
+	private static function subscriptionEditOld(array $streamNames, array $titles, string $action, string $add = '', string $remove = '') {
 		//https://github.com/mihaip/google-reader-api/blob/master/wiki/ApiSubscriptionEdit.wiki
 		switch ($action) {
 			case 'subscribe':
@@ -551,27 +660,52 @@ final class GReaderAPI extends Handler{
 	}
 
 	/** @return never */
-	private static function quickadd(string $url) {
-		try {
-			$url = htmlspecialchars($url, ENT_COMPAT, 'UTF-8');
-			if (str_starts_with($url, 'feed/')) {
-				$url = substr($url, 5);
-			}
-			$feed = FreshRSS_feed_Controller::addFeed($url);
-			exit(json_encode(array(
-					'numResults' => 1,
-					'query' => $feed->url(),
-					'streamId' => 'feed/' . $feed->id(),
-					'streamName' => $feed->name(),
-				), JSON_OPTIONS));
-		} catch (Exception $e) {
-			error_log('quickadd error: ' . $e->getMessage());
-			die(json_encode(array(
-					'numResults' => 0,
-					'error' => $e->getMessage(),
-				), JSON_OPTIONS));
-		}
-	}
+/** @return never */
+private static function quickadd(string $url, string $session_id) {
+    try {
+        $url = htmlspecialchars($url, ENT_COMPAT, 'UTF-8');
+        if (str_starts_with($url, 'feed/')) {
+            $url = substr($url, 5);
+        }
+
+        // Call Tiny Tiny RSS API to add the feed
+        $response = self::callTinyTinyRssApi('subscribeToFeed', [
+            'feed_url' => $url,
+            'category_id' => 0, // Default category, you might want to make this configurable
+        ], $session_id);
+
+        if ($response && isset($response['status']) && $response['status'] == 0) {
+            // Feed added successfully
+            $feedId = $response['content']['feed_id'];
+
+            // Fetch the feed details
+            $feedResponse = self::callTinyTinyRssApi('getFeeds', [
+                'feed_id' => $feedId,
+            ], $session_id);
+
+            if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
+                $feed = $feedResponse['content'][0];
+
+                exit(json_encode([
+                    'numResults' => 1,
+                    'query' => $url,
+                    'streamId' => 'feed/' . $feedId,
+                    'streamName' => $feed['title'],
+                ], JSON_OPTIONS));
+            }
+        }
+
+        // If we get here, something went wrong
+        throw new Exception('Failed to add feed');
+
+    } catch (Exception $e) {
+        error_log('quickadd error: ' . $e->getMessage());
+        die(json_encode([
+            'numResults' => 0,
+            'error' => $e->getMessage(),
+        ], JSON_OPTIONS));
+    }
+}
 
 	/** @return never */
 	private static function unreadCount() {
@@ -779,10 +913,10 @@ final class GReaderAPI extends Handler{
 			$itemRefs = [];
 			foreach ($response['content'] as $article) {
 				$itemRefs[] = [
-					'id' => '' . $article['id'] //64-bit decimal
+					'id' => '' . $article['id'], //64-bit decimal
 					//'id' => 'tag:google.com,2005:reader/item/' . $article['id'],
-					//'directStreamIds' => ['feed/' . $article['feed_id']],
-					//'timestampUsec' => $article['updated'] . '000000',
+					'directStreamIds' => ['feed/' . $article['feed_id']],
+					'timestampUsec' => $article['updated'] . '000000',
 				];
 			}
 	
@@ -812,18 +946,16 @@ final class GReaderAPI extends Handler{
 		foreach ($e_ids as $i => $e_id) {
 			// https://feedhq.readthedocs.io/en/latest/api/terminology.html#items
 			if (!ctype_digit($e_id) || $e_id[0] === '0') {
-				
-				$e_ids[$i] = basename($e_id);	//Strip prefix 'tag:google.com,2005:reader/item/'
+				$e_ids[$i] = hex2dec(basename($e_id));	//Strip prefix 'tag:google.com,2005:reader/item/'
 			}
 		}
-
 		$article_ids_string = implode(',', $e_ids);
-		
 		// Make a single API call for all requested articles
 		$response = self::callTinyTinyRssApi('getArticle', [
 			'article_id' => $article_ids_string,
 		], $session_id);
-		
+		error_log(print_r('RESPONSE:', true));
+		error_log(print_r($response, true));
 		$items = [];
 		if ($response && isset($response['status']) && $response['status'] == 0 && !empty($response['content'])) {
 			foreach ($response['content'] as $article) {
@@ -1132,12 +1264,12 @@ final class GReaderAPI extends Handler{
 									$action = $_REQUEST['ac'];	//Action to perform on the given StreamId. Possible values are `subscribe`, `unsubscribe` and `edit`
 									$add = $_REQUEST['a'] ?? '';	//StreamId to add the subscription to (generally a user label)
 									$remove = $_REQUEST['r'] ?? '';	//StreamId to remove the subscription from (generally a user label)
-									self::subscriptionEdit($streamNames, $titles, $action, $add, $remove);
+									self::subscriptionEdit($streamNames, $titles, $action, $add, $remove, $session_id);
 								}
 								break;
 							case 'quickadd':	//https://github.com/theoldreader/api
 								if (isset($_REQUEST['quickadd'])) {
-									self::quickadd($_REQUEST['quickadd']);
+									self::quickadd($_REQUEST['quickadd'], $session_id);
 								}
 								break;
 						}
