@@ -1,20 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
-* == Description ==
-* Server-side API compatible with FreshRSS API for the Tiny Tiny RSS project https://tt-rss.org
-
-* == Credits ==
-* Adapted and implemented by Eric Pierce https://eric-pierce.com
-* Based on the Google Reader API implementation for FreshRSS by Alexandre Alapetite https://alexandre.alapetite.fr
-    * https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php
-	* Released under GNU AGPL 3 license http://www.gnu.org/licenses/agpl-3.0.html
-
-* == Version History ==
-    * 2024-09-08: Initial Release by Eric Pierce
-*/
-
 error_reporting(E_ERROR | E_PARSE);
 
 $ttrss_root = dirname(__DIR__, 3);
@@ -248,14 +234,14 @@ final class FreshGReaderAPI extends Handler {
         curl_setopt($curl, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         $response = curl_exec($curl);
         curl_close($curl);
-    
-        return json_decode($response, true);
+
+		return json_decode($response, true);
     }
 
     // Function to check if the session is still valid
     private static function isSessionActive($session_id) {
         $response = self::callTinyTinyRssApi('isLoggedIn', [], $session_id);
-
+		
         return $response && isset($response['status']) && $response['status'] == 0 && $response['content']['status'] === true;
     }
 
@@ -324,7 +310,7 @@ final class FreshGReaderAPI extends Handler {
 
 	/** @return never */
 	private static function userInfo() {
-		$user = 'freshapi-user';//$_SESSION['name'];
+		$user = 'freshapi-user';//
 		exit(json_encode(array(
 				'userId' => $user,
 				'userName' => $user,
@@ -339,7 +325,6 @@ final class FreshGReaderAPI extends Handler {
 
 		$tags = [
 			['id' => 'user/-/state/com.google/starred'],
-			// You can add more default tags here if needed
 		];
 
 		// Fetch categories
@@ -415,11 +400,11 @@ final class FreshGReaderAPI extends Handler {
 		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
 			$feeds = $feedsResponse['content'];
 		}
-
+		error_log(print_r($feedsResponse, true));
 		// Generate OPML
 		$opml = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><opml version="1.0"></opml>');
 		$head = $opml->addChild('head');
-		$head->addChild('title', 'Tiny Tiny RSS Subscriptions Export');
+		$head->addChild('title', 'FreshAPI TT-RSS Subscriptions Export');
 		$body = $opml->addChild('body');
 
 		foreach ($categories as $category) {
@@ -431,10 +416,10 @@ final class FreshGReaderAPI extends Handler {
 				if ($feed['cat_id'] == $category['id']) {
 					$feedOutline = $outline->addChild('outline');
 					$feedOutline->addAttribute('type', 'rss');
-					$feedOutline->addAttribute('text', htmlspecialchars($feed['title']));
-					$feedOutline->addAttribute('title', htmlspecialchars($feed['title']));
-					$feedOutline->addAttribute('xmlUrl', htmlspecialchars($feed['feed_url']));
-					$feedOutline->addAttribute('htmlUrl', htmlspecialchars($feed['site_url']));
+					$feedOutline->addAttribute('text', htmlspecialchars(strval($feed['title'])));
+					$feedOutline->addAttribute('title', htmlspecialchars(strval($feed['title'])));
+					$feedOutline->addAttribute('xmlUrl', htmlspecialchars(strval($feed['feed_url'])));
+					$feedOutline->addAttribute('htmlUrl', htmlspecialchars(strval($feed['feed_url'])));
 				}
 			}
 		}
@@ -444,10 +429,10 @@ final class FreshGReaderAPI extends Handler {
 			if ($feed['cat_id'] == 0) {
 				$feedOutline = $body->addChild('outline');
 				$feedOutline->addAttribute('type', 'rss');
-				$feedOutline->addAttribute('text', htmlspecialchars($feed['title']));
-				$feedOutline->addAttribute('title', htmlspecialchars($feed['title']));
-				$feedOutline->addAttribute('xmlUrl', htmlspecialchars($feed['feed_url']));
-				$feedOutline->addAttribute('htmlUrl', htmlspecialchars($feed['site_url']));
+				$feedOutline->addAttribute('text', htmlspecialchars(strval($feed['title'])));
+				$feedOutline->addAttribute('title', htmlspecialchars(strval($feed['title'])));
+				$feedOutline->addAttribute('xmlUrl', htmlspecialchars(strval($feed['feed_url'])));
+				$feedOutline->addAttribute('htmlUrl', htmlspecialchars(strval($feed['feed_url'])));
 			}
 		}
 
@@ -861,19 +846,19 @@ final class FreshGReaderAPI extends Handler {
 	}
 
 	/** @return never */
-
+/*
 	private static function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 	
 		$params = [
-			'limit' => $count, //appears to have a limit of 100?
+			'limit' => $count, //appears to have a limit of 200?
 			'skip' => $continuation ? intval($continuation) : 0,
 			'since_id' => $start_time,
 			'include_attachments' => false,
 			'view_mode' => 'unread', // Adjust as needed
 			'feed_id' => -4,
+			'order' => ($order === 'o') ? 'date_reverse' : null,
 		];
-
 		if (strpos($streamId, 'feed/') === 0) {
 			$params['feed_id'] = substr($streamId, 5); // Remove 'feed/' prefix
 		} elseif (strpos($streamId, 'user/-/label/') === 0) {
@@ -884,7 +869,6 @@ final class FreshGReaderAPI extends Handler {
 			$params['feed_id'] = -1; // Starred articles in TTRSS
 			$params['view_mode'] = 'marked';
 		}
-		//error_log(print_r($params, true));
 		$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
 		if ($response && isset($response['status']) && $response['status'] == 0) {
 			$itemRefs = [];
@@ -900,24 +884,87 @@ final class FreshGReaderAPI extends Handler {
 			$result = [
 				'itemRefs' => $itemRefs,
 			];
-	/*
+	
 			if (count($itemRefs) >= $count) {
 				$result['continuation'] = $params['skip'] + $count;
 			}
-	*/
+	
 			if (count($response['content']) >= $count) {
 				$entryId = end($response['content']);
 				if ($entryId != false) {
 					$response['continuation'] = '' . $entryId;
 				}
 			}
-
+			error_log(print_r('resultitemsids=' . strval(count($result['itemRefs'])),true));
+			//error_log(print_r($subscriptions,true));
 			echo json_encode($result, JSON_OPTIONS);
 			exit();
 		}
 	
 		self::internalServerError();
 	}
+*/
+
+	private static function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
+		header('Content-Type: application/json; charset=UTF-8');
+
+		$params = [
+			'limit' => $count, //TTRSS Backend limits to 200
+			'skip' => $continuation ? intval($continuation) : 0,
+			'since_id' => $start_time,
+			'include_attachments' => false,
+			'view_mode' => 'unread', // Adjust as needed
+			'feed_id' => -4,
+			'order' => ($order === 'o') ? 'date_reverse' : null,
+		];
+		if (strpos($streamId, 'feed/') === 0) {
+			$params['feed_id'] = substr($streamId, 5); // Remove 'feed/' prefix
+		} elseif (strpos($streamId, 'user/-/label/') === 0) {
+			$params['cat_id'] = substr($streamId, 13); // Remove 'user/-/label/' prefix
+		} elseif ($streamId === 'user/-/state/com.google/reading-list') {
+			$params['feed_id'] = -4; // All articles in TTRSS
+		} elseif ($streamId === 'user/-/state/com.google/starred') {
+			$params['feed_id'] = -1; // Starred articles in TTRSS
+			$params['view_mode'] = 'marked';
+		}
+
+		$allItems = [];
+		$totalItems = 0;
+
+		do {
+			$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
+			if ($response && isset($response['status']) && $response['status'] == 0) {
+				$items = $response['content'];
+				$itemCount = count($items);
+				$allItems = array_merge($allItems, $items);
+				$totalItems += $itemCount;
+				$params['skip'] += $itemCount;
+			} else {
+				self::internalServerError();
+			}
+		} while ($itemCount == 200);
+
+		$itemRefs = [];
+		foreach ($allItems as $article) {
+			$itemRefs[] = [
+				'id' => '' . $article['id'], //64-bit decimal
+				'directStreamIds' => ['feed/' . $article['feed_id']],
+				'timestampUsec' => $article['updated'] . '000000',
+			];
+		}
+
+		$result = [
+			'itemRefs' => $itemRefs,
+		];
+
+		if ($totalItems >= $count) {
+			$result['continuation'] = $params['skip'];
+		}
+
+		echo json_encode($result, JSON_OPTIONS);
+		exit();
+	}
+
 	private static function streamContentsItems(array $e_ids, string $order, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 		foreach ($e_ids as $i => $e_id) {
@@ -1030,7 +1077,7 @@ final class FreshGReaderAPI extends Handler {
 	}
 
 	private static function convertTtrssArticleToGreaderFormat($article) {
-		error_log(print_r($article, true));
+		//error_log(print_r($article, true));
 		return [
 			'id' => 'tag:google.com,2005:reader/item/' . self::dec2hex(strval($article['id'])),
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
@@ -1393,7 +1440,7 @@ final class FreshGReaderAPI extends Handler {
 					if (isset($pathInfos[5])) {
 						switch ($pathInfos[5]) {
 							case 'export':
-								self::subscriptionExport();
+								self::subscriptionExport($session_id);
 								// Always exits
 							case 'import':
 								if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $ORIGINAL_INPUT != '') {
