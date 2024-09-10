@@ -235,7 +235,6 @@ final class FreshGReaderAPI extends Handler {
         curl_setopt($curl, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         $response = curl_exec($curl);
         curl_close($curl);
-
 		return json_decode($response, true);
     }
 
@@ -354,10 +353,10 @@ final class FreshGReaderAPI extends Handler {
 		];
 
 		// Fetch categories
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			foreach ($categoriesResponse['content'] as $category) {
-				if ($category['title'] != 'Special') { //Removing "Special"
+				if ($category['title'] != 'Special' && $category['title'] != 'Labels') { //Removing "Special" and "Labels"
 					$tags[] = [
 						'id' => isset($category['title']) ? 'user/-/label/' . htmlspecialchars_decode($category['title'], ENT_QUOTES) : null,
 						'type' => 'folder',
@@ -414,7 +413,7 @@ final class FreshGReaderAPI extends Handler {
 		header('Content-Disposition: attachment; filename="subscriptions.opml"');
 
 		// Fetch categories
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		$categories = [];
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			$categories = $categoriesResponse['content'];
@@ -514,7 +513,7 @@ final class FreshGReaderAPI extends Handler {
 
 	private static function getCategoryId(string $categoryName, string $session_id): int {
 		// First, try to find an existing category
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			foreach ($categoriesResponse['content'] as $category) {
 				if ($category['title'] == $categoryName) {
@@ -529,7 +528,7 @@ final class FreshGReaderAPI extends Handler {
 	private static function subscriptionList($session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => -4], $session_id);
 		$subscriptions = [];
 		$categoryMap = [];
@@ -586,7 +585,7 @@ final class FreshGReaderAPI extends Handler {
 	private static function addCategoryFeed(int $feedId, int $userId, int $category_id = -100, string $category_name = ''): bool {
 		try {
 			$pdo = Db::pdo();
-
+			$category_name = clean($category_name);
 			if ($category_id == -100 && $category_name != '') {
 				// Category doesn't exist, create it
 				$sth = $pdo->prepare("INSERT INTO ttrss_feed_categories (title, owner_uid) VALUES (?, ?)");
@@ -624,7 +623,7 @@ final class FreshGReaderAPI extends Handler {
 		$category_id = 0;
 		if ($add != '' && strpos($add, 'user/-/label/') === 0) {
 			$categoryName = substr($add, 13);
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
 					if ($category['title'] == $categoryName) {
@@ -847,7 +846,7 @@ final class FreshGReaderAPI extends Handler {
 				}
 				break;
 			case 'c':    //category or label
-				$categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+				$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 				if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 					foreach ($categoryResponse['content'] as $category) {
 						if ($category['title'] == $streamId) {
@@ -1148,7 +1147,7 @@ final class FreshGReaderAPI extends Handler {
 			$newName = htmlspecialchars($newName, ENT_COMPAT, 'UTF-8');
 
 			// First, check if it's a category
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
 					if ($category['title'] == $oldName) {
@@ -1193,7 +1192,7 @@ final class FreshGReaderAPI extends Handler {
 			$tagName = htmlspecialchars($tagName, ENT_COMPAT, 'UTF-8');
 
 			// First, check if it's a category
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
 					if ($category['title'] == $tagName) {
@@ -1254,7 +1253,7 @@ final class FreshGReaderAPI extends Handler {
 			$params['feed_id'] = substr($streamId, 5);
 		} elseif (strpos($streamId, 'user/-/label/') === 0) {
 			$categoryName = substr($streamId, 13);
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
+			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
 					if ($category['title'] == $categoryName) {
