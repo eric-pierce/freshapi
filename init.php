@@ -1,20 +1,29 @@
 <?php
 
 class FreshAPI extends Plugin {
-
+	
 	private $host;
-	private $dbh;
+	//private $dbh;
 
 	function about() {
 		return array(1.0,
 			"FreshRSS API Bridge Plugin",
 			"Eric Pierce",
-			true,
+			false,
 			"https://github.com/eric-pierce/freshapi");
+	}
+
+    function api_version() {
+		return 2;
 	}
 
 	function init($host) {
 		$this->host = $host;
+	}
+}
+
+	/*
+		$host->add_api_method("renameFeed", $this);
 		$this->host->add_api_method("addLabel", $this);
 		$this->host->add_api_method("removeLabel", $this);
 		$this->host->add_api_method("renameLabel", $this);
@@ -22,8 +31,29 @@ class FreshAPI extends Plugin {
 		$this->host->add_api_method("removeCategory", $this);
 		$this->host->add_api_method("renameCategory", $this);
 		$this->host->add_api_method("moveCategory", $this);
-		$this->host->add_api_method("renameFeed", $this);
-		$this->host->add_api_method("moveFeed", $this);	}
+		$this->host->add_api_method("moveFeed", $this);	
+	}
+	function renameFeed() {
+		$feed_id = (int) clean($_REQUEST["feed_id"]);
+		$feed = ORM::for_table('ttrss_feeds')->find_one($feed_id);
+		$session_id = clean($_REQUEST["session_id"]);
+
+		if ($feed) {
+			if (isset($_REQUEST["category_id"])) {
+				$feed->cat_id = (int) clean($_REQUEST["category_id"]);
+			}
+			if (isset($_REQUEST["feed_title"])) {
+				$feed->title = clean($_REQUEST["feed_title"]);
+			}
+			$feed->save();
+			$sth = $this->dbh->prepare("UPDATE ttrss_feeds SET title = ? WHERE id = ? AND owner_uid = ?");
+			$sth->execute([$title, $feed_id, $session_id]);
+
+			return array(API::STATUS_OK, array("status" => 0, "message" => "OK"));
+		} else {
+			return array(API::STATUS_ERR, array("status" => 1, "message" => "Feed not found"));
+		}
+	}
 
 	function removeLabel()
 	{
@@ -155,28 +185,6 @@ class FreshAPI extends Plugin {
 		}
 	}
 
-	function renameFeed() {
-		$feed_id = (int) clean($_REQUEST["feed_id"]);
-		$feed = ORM::for_table('ttrss_feeds')->find_one($feed_id);
-		$session_id = clean($_REQUEST["session_id"]);
-
-		if ($feed) {
-			if (isset($_REQUEST["category_id"])) {
-				$feed->cat_id = (int) clean($_REQUEST["category_id"]);
-			}
-			if (isset($_REQUEST["feed_title"])) {
-				$feed->title = clean($_REQUEST["feed_title"]);
-			}
-			$feed->save();
-			$sth = $this->dbh->prepare("UPDATE ttrss_feeds SET title = ? WHERE id = ? AND owner_uid = ?");
-			$sth->execute([$title, $feed_id, $session_id]);
-
-			return array(API::STATUS_OK, array("status" => 0, "message" => "OK"));
-		} else {
-			return array(API::STATUS_ERR, array("status" => 1, "message" => "Feed not found"));
-		}
-	}
-
 	function moveFeed() {
 		$feed_id = (int)$_REQUEST["feed_id"];
 		$cat_id = (int)$_REQUEST["category_id"];
@@ -192,10 +200,5 @@ class FreshAPI extends Plugin {
 			return array(API::STATUS_ERR, array("error" => 'INCORRECT_USAGE'));
 		}
 	}
-
-    function api_version() {
-		return 2;
-	}
-}
-
+*/
 ?>

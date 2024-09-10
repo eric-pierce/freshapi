@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 error_reporting(E_ERROR | E_PARSE);
 
+
 $ttrss_root = dirname(__DIR__, 3);
 $config_path = $ttrss_root . "/config.php";
 
@@ -20,7 +21,7 @@ set_include_path(implode(PATH_SEPARATOR, [
 	get_include_path(),
 ]));
 
-require_once $config_path;
+//require_once $config_path;
 require_once $ttrss_root . "/include/autoload.php";
 require_once $ttrss_root . "/include/sessions.php";
 require_once $ttrss_root . "/include/functions.php";
@@ -241,7 +242,6 @@ final class FreshGReaderAPI extends Handler {
     // Function to check if the session is still valid
     private static function isSessionActive($session_id) {
         $response = self::callTinyTinyRssApi('isLoggedIn', [], $session_id);
-		
         return $response && isset($response['status']) && $response['status'] == 0 && $response['content']['status'] === true;
     }
 
@@ -317,6 +317,32 @@ final class FreshGReaderAPI extends Handler {
 				'userProfileId' => $user,
 				'userEmail' => '',
 			), JSON_OPTIONS));
+	}
+
+	private static function sessionToUserId(string $session_id): ?int {
+		try {
+			$pdo = Db::pdo();
+			$sth = $pdo->prepare("SELECT data FROM ttrss_sessions WHERE id = ?");
+			$sth->execute([$session_id]);
+			$result = $sth->fetch(PDO::FETCH_ASSOC);
+	
+			if ($result && isset($result['data'])) {
+				$sessionData = base64_decode($result['data']);
+				if ($sessionData !== false) {
+					preg_match('/uid\|i\:[0-9]+/', $sessionData, $matches);
+					$uid = substr(strval($matches[0]), 6);
+					if (isset($uid)) {
+						return (int)$uid;
+					}
+				}
+			}
+			// If we couldn't get the user ID, log the error and return null
+			error_log("Failed to get user ID for session: $session_id");
+			return null;
+		} catch (PDOException $e) {
+			error_log("Database error when getting user ID for session: " . $e->getMessage());
+			return null;
+		}
 	}
 
 	/** @return never */
@@ -400,7 +426,7 @@ final class FreshGReaderAPI extends Handler {
 		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
 			$feeds = $feedsResponse['content'];
 		}
-		error_log(print_r($feedsResponse, true));
+
 		// Generate OPML
 		$opml = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><opml version="1.0"></opml>');
 		$head = $opml->addChild('head');
@@ -496,14 +522,6 @@ final class FreshGReaderAPI extends Handler {
 				}
 			}
 		}
-
-		// If the category doesn't exist, create it
-		$createCategoryResponse = self::callTinyTinyRssApi('addCategory', ['title' => $categoryName], $session_id);
-		if ($createCategoryResponse && isset($createCategoryResponse['status']) && $createCategoryResponse['status'] == 0) {
-			return $createCategoryResponse['content']['id'];
-		}
-
-		// If we couldn't create the category, return 0 (uncategorized)
 		return 0;
 	}
 
@@ -546,47 +564,84 @@ final class FreshGReaderAPI extends Handler {
 		exit();
 	}
 
+	/** @return never */
+	private static function renameFeed($feed_id, $title, $uid) {
+		header('Content-Type: application/json; charset=UTF-8');
+
+		$feed_id = clean($feed_id);
+		$title = clean($title);
+
+		if (isset($feed_id)) {
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("UPDATE ttrss_feeds SET title = ? WHERE id = ? AND owner_uid = ?");
+				return $sth->execute([$title, $feed_id, $uid]);
+			} catch (PDOException $e) {
+				error_log("Database error when renaming feed: " . $e->getMessage());
+				return false;
+			}
+		}
+	}
+
+	private static function addCategoryFeed(int $feedId, int $userId, int $category_id = -100, string $category_name = ''): bool {
+		try {
+			$pdo = Db::pdo();
+
+			if ($category_id == -100 && $category_name != '') {
+				// Category doesn't exist, create it
+				$sth = $pdo->prepare("INSERT INTO ttrss_feed_categories (title, owner_uid) VALUES (?, ?)");
+				$sth->execute([$category_name, $userId]);
+				$category_id = $pdo->lastInsertId();
+			}
+	
+			// Now, update the feed with the new category
+			$sth = $pdo->prepare("UPDATE ttrss_feeds SET cat_id = ? WHERE id = ? AND owner_uid = ?");
+			return $sth->execute([$category_id, $feedId, $userId]);
+	
+		} catch (PDOException $e) {
+			error_log("Database error when adding category to feed: " . $e->getMessage());
+			return false;
+		}
+	}
+
+	private static function removeCategoryFeed(int $feedId, int $userId): bool {
+		try {
+			$pdo = Db::pdo();
+			$sth = $pdo->prepare("UPDATE ttrss_feeds SET cat_id = NULL WHERE id = ? AND owner_uid = ?");
+			return $sth->execute([$feedId, $userId]);
+		} catch (PDOException $e) {
+			error_log("Database error when removing category from feed: " . $e->getMessage());
+			return false;
+		}
+	}
+
 	/**
 	 * @param array<string> $streamNames
 	 * @param array<string> $titles
 	 * @return never
 	 */
 	private static function subscriptionEdit(array $streamNames, array $titles, string $action, string $session_id, string $add = '', string $remove = '') {
-		$action = $_REQUEST['ac'];	//Action to perform on the given StreamId. Possible values are `subscribe`, `unsubscribe` and `edit`
-
-		switch ($action) {
-			case 'subscribe':
-			case 'unsubscribe':
-			case 'edit':
-				break;
-			default:
-				self::badRequest();
-		}
-
-		$categoryId = 0;
+		$category_id = 0;
 		if ($add != '' && strpos($add, 'user/-/label/') === 0) {
 			$categoryName = substr($add, 13);
 			$categoryResponse = self::callTinyTinyRssApi('getCategories', [], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
 					if ($category['title'] == $categoryName) {
-						$categoryId = $category['id'];
+						$category_id = $category['id'];
 						break;
 					}
-				}
-			}
-			if ($categoryId == 0) {
-				// Category doesn't exist, create it
-				$createCategoryResponse = self::callTinyTinyRssApi('addCategory', ['title' => $categoryName], $session_id);
-				if ($createCategoryResponse && isset($createCategoryResponse['status']) && $createCategoryResponse['status'] == 0) {
-					$categoryId = $createCategoryResponse['content']['id'];
 				}
 			}
 		}
 
 		foreach ($streamNames as $i => $streamUrl) {
+			error_log(print_r($streamUrl, true));
 			if (strpos($streamUrl, 'feed/') === 0) {
 				$streamUrl = substr($streamUrl, 5);
+				if (strpos($streamUrl, 'feed/') === 0) { //doubling up as some readers seem to push double feed/ prefixes here
+					$streamUrl = substr($streamUrl, 5);
+				}
 				$feedId = 0;
 				if (is_numeric($streamUrl)) {
 					$feedId = (int)$streamUrl;
@@ -607,12 +662,8 @@ final class FreshGReaderAPI extends Handler {
 				switch ($action) {
 					case 'subscribe':
 						if ($feedId == 0) {
-							$subscribeResponse = self::callTinyTinyRssApi('subscribeToFeed', [
-								'feed_url' => $streamUrl,
-								'category_id' => $categoryId,
-								'title' => $title,
-							], $session_id);
-							if (!($subscribeResponse && isset($subscribeResponse['status']) && $subscribeResponse['status'] == 0)) {
+							$subscribeResponse = self::quickadd($url, $session_id, $category_id);
+							if (!$subscribeResponse) {
 								self::badRequest();
 							}
 						}
@@ -628,23 +679,25 @@ final class FreshGReaderAPI extends Handler {
 						}
 						break;
 					case 'edit':
+						$uid = self::sessionToUserId($session_id);
 						if ($feedId > 0) {
-							if ($categoryId > 0) {
-								$moveFeedResponse = self::callTinyTinyRssApi('moveFeed', [
-									'feed_id' => $feedId,
-									'category_id' => $categoryId,
-								], $session_id);
-								if (!($moveFeedResponse && isset($moveFeedResponse['status']) && $moveFeedResponse['status'] == 0)) {
+							if ($add != '' && strpos($add, 'user/-/label/') === 0) {
+								$categoryName = substr($add, 13);
+								if ($category_id == 0) {
+									$category_id = -100;
+								}
+								if (!self::addCategoryFeed($feedId, $uid, $category_id, $categoryName)) {
+									self::badRequest();
+								}
+							}
+							if ($remove != '' && strpos($remove, 'user/-/label/') === 0) {
+								if (!self::removeCategoryFeed($feedId, $uid)) {
 									self::badRequest();
 								}
 							}
 							if ($title != '') {
-								$renameFeedResponse = self::callTinyTinyRssApi('renameFeed', [
-									'feed_id' => $feedId,
-									'title' => $title,
-								], $session_id);
-								error_log(print_r($renameFeedResponse, true));
-								if (!($renameFeedResponse && isset($renameFeedResponse['status']) && $renameFeedResponse['status'] == 0)) {
+								$renameFeedResponse = self::renameFeed($feedId, $title, $uid);
+								if (!$renameFeedResponse) {
 									self::badRequest();
 								}
 							}
@@ -659,7 +712,7 @@ final class FreshGReaderAPI extends Handler {
 	}
 
 	/** @return never */
-	private static function quickadd(string $url, string $session_id) {
+	private static function quickadd(string $url, string $session_id, int $category_id = 0) {
 		try {
 			$url = htmlspecialchars($url, ENT_COMPAT, 'UTF-8');
 			if (str_starts_with($url, 'feed/')) {
@@ -669,9 +722,9 @@ final class FreshGReaderAPI extends Handler {
 			// Call Tiny Tiny RSS API to add the feed
 			$response = self::callTinyTinyRssApi('subscribeToFeed', [
 				'feed_url' => $url,
-				'category_id' => 0, // Default category, you might want to make this configurable
+				'category_id' => $category_id,
 			], $session_id);
-			error_log(print_r($response, true));
+			
 			if ($response && isset($response['status']) && $response['status'] == 0) {
 				// Feed added successfully
 				$feedId = $response['content']['status']['feed_id'];
@@ -681,11 +734,8 @@ final class FreshGReaderAPI extends Handler {
 					'feed_id' => $feedId,
 				], $session_id);
 
-				error_log(print_r($feedResponse, true));
-
 				if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
 					$feed = $feedResponse['content'][0];
-
 					exit(json_encode([
 						'numResults' => 1,
 						'query' => $url,
@@ -845,66 +895,6 @@ final class FreshGReaderAPI extends Handler {
 		return [$type, $feed_id, $is_cat, $view_mode, trim($search)];
 	}
 
-	/** @return never */
-/*
-	private static function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
-		header('Content-Type: application/json; charset=UTF-8');
-	
-		$params = [
-			'limit' => $count, //appears to have a limit of 200?
-			'skip' => $continuation ? intval($continuation) : 0,
-			'since_id' => $start_time,
-			'include_attachments' => false,
-			'view_mode' => 'unread', // Adjust as needed
-			'feed_id' => -4,
-			'order' => ($order === 'o') ? 'date_reverse' : null,
-		];
-		if (strpos($streamId, 'feed/') === 0) {
-			$params['feed_id'] = substr($streamId, 5); // Remove 'feed/' prefix
-		} elseif (strpos($streamId, 'user/-/label/') === 0) {
-			$params['cat_id'] = substr($streamId, 13); // Remove 'user/-/label/' prefix
-		} elseif ($streamId === 'user/-/state/com.google/reading-list') {
-			$params['feed_id'] = -4; // All articles in TTRSS
-		} elseif ($streamId === 'user/-/state/com.google/starred') {
-			$params['feed_id'] = -1; // Starred articles in TTRSS
-			$params['view_mode'] = 'marked';
-		}
-		$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
-		if ($response && isset($response['status']) && $response['status'] == 0) {
-			$itemRefs = [];
-			foreach ($response['content'] as $article) {
-				$itemRefs[] = [
-					'id' => '' . $article['id'], //64-bit decimal
-					//'id' => 'tag:google.com,2005:reader/item/' . $article['id'],
-					'directStreamIds' => ['feed/' . $article['feed_id']],
-					'timestampUsec' => $article['updated'] . '000000',
-				];
-			}
-	
-			$result = [
-				'itemRefs' => $itemRefs,
-			];
-	
-			if (count($itemRefs) >= $count) {
-				$result['continuation'] = $params['skip'] + $count;
-			}
-	
-			if (count($response['content']) >= $count) {
-				$entryId = end($response['content']);
-				if ($entryId != false) {
-					$response['continuation'] = '' . $entryId;
-				}
-			}
-			error_log(print_r('resultitemsids=' . strval(count($result['itemRefs'])),true));
-			//error_log(print_r($subscriptions,true));
-			echo json_encode($result, JSON_OPTIONS);
-			exit();
-		}
-	
-		self::internalServerError();
-	}
-*/
-
 	private static function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 
@@ -999,7 +989,6 @@ final class FreshGReaderAPI extends Handler {
 			'updated' => time(),
 			'items' => $items,
 		];
-		//error_log(print_r($result['items'][0], true));
 		echo json_encode($result, JSON_OPTIONS);
 		exit();
 	}
@@ -1077,7 +1066,6 @@ final class FreshGReaderAPI extends Handler {
 	}
 
 	private static function convertTtrssArticleToGreaderFormat($article) {
-		//error_log(print_r($article, true));
 		return [
 			'id' => 'tag:google.com,2005:reader/item/' . self::dec2hex(strval($article['id'])),
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
@@ -1347,7 +1335,6 @@ final class FreshGReaderAPI extends Handler {
 			}
 		} elseif (isset($pathInfos[3], $pathInfos[4]) && $pathInfos[1] === 'reader' && $pathInfos[2] === 'api' && $pathInfos[3] === '0') {
 			$session_id = self::authorizationToUser();
-
 			$timestamp = isset($_GET['ck']) ? (int)$_GET['ck'] : 0;	//ck=[unix timestamp] : Use the current Unix time here, helps Google with caching.
 			switch ($pathInfos[4]) {
 				case 'stream':
