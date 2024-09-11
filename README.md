@@ -1,5 +1,5 @@
 # FreshAPI
-A FreshRSS / Google Reader API Implementation for Tiny-Tiny RSS
+A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
 Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS Reader server implementations, but before the release of FreshAPI had two main API integrations: 
@@ -118,13 +118,13 @@ http {
 }
 ```
 
-6. Next map the file we just created into the cthulhoo/ttrss-web-nginx:latest image as part of the docker setup.
+6. The official Docker setup for Tiny-Tiny RSS consists of three images. You will need to map the file you just created into the cthulhoo/ttrss-web-nginx:latest image as part of the docker setup.
 ```yaml
     volumes:
       - $DOCKERDIR/ttrss:/var/www/html:ro
       - $DOCKERDIR/ttrss-nginx.conf.template:/etc/nginx/templates/nginx.conf.template
 ```
-Example full docker-compose portion for TT-RSS's official images and FreshAPI support below:
+Example full docker-compose portion for all three of TT-RSS's official images using [Traefik](https://github.com/traefik/traefik) and FreshAPI support below. 
 ```yaml
   app:
     container_name: ttrss-app
@@ -145,7 +145,6 @@ Example full docker-compose portion for TT-RSS's official images and FreshAPI su
       - TTRSS_DB_USER=ttrss
       - TTRSS_DB_PASS=$POSTGRES_TTRSS_PASSWORD
       - TTRSS_SELF_URL_PATH=https://feed.$DOMAINNAME/tt-rss
-      - TTRSS_PLUGINS=auth_internal,nginx_xaccel,freshapi
 
   ttrss-updater:
     container_name: ttrss-updater
@@ -200,7 +199,7 @@ Example full docker-compose portion for TT-RSS's official images and FreshAPI su
       - "traefik.http.services.ttrss-svc.loadbalancer.server.port=80"
 ```
 7. Restart all images
-8. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://yoursubdomain.yourdomain.tld/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and user an App Password.
+8. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://yoursubdomain.yourdomain.tld/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Compatible Clients
 
@@ -222,6 +221,9 @@ There are no point releases, FreshAPI has a rolling release. If cloned into the 
 
 Both Issues and Contributions/Pull Requests are welcome and encouraged - please feel free to open either.
 
+If you'd like to donate to this project you can do so through *Buy Me A Coffee*
+
+<a href="https://www.buymeacoffee.com/ericpierce" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 ## License
 
 This project is licensed under the [GNU AGPL 3 License](http://www.gnu.org/licenses/agpl-3.0.html)

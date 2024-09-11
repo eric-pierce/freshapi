@@ -6,7 +6,7 @@ Server-side API compatible with FreshRSS API for the Tiny Tiny RSS project https
 
 == Credits ==
 * Adapted and implemented by Eric Pierce https://eric-pierce.com
-* Structured after the Google Reader API implementation for FreshRSS by Alexandre Alapetite https://alexandre.alapetite.fr
+* Modeled after Google Reader API implementation for FreshRSS by Alexandre Alapetite https://alexandre.alapetite.fr
     https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php
 	Released under GNU AGPL 3 license http://www.gnu.org/licenses/agpl-3.0.html
 
@@ -20,7 +20,7 @@ class FreshAPI extends Plugin {
 
 	function about() {
 		return array(1.0,
-			"FreshRSS API Bridge Plugin",
+			"A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS",
 			"Eric Pierce",
 			false,
 			"https://github.com/eric-pierce/FreshAPI");

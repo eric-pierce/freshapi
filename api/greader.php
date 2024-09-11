@@ -549,7 +549,7 @@ final class FreshGReaderAPI extends Handler {
 
 		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
 			foreach ($feedsResponse['content'] as $feed) {
-				if ($feed['id'] > 0) { //Removing "Special" cat list
+				if ($feed['id'] > 0) { //Removing "Special" and "Label" cat lists
 					$subscriptions[] = [
 						'id' => 'feed/' . $feed['id'],
 						'title' => $feed['title'],
