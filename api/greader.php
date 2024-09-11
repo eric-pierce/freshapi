@@ -220,6 +220,15 @@ final class FreshGReaderAPI extends Handler {
 			str_pad(dechex((int)($dec)), 16, '0', STR_PAD_LEFT);
 	}
 
+    private static function triggerGarbageCollection(): void {
+        if (gc_enabled()) {
+            gc_collect_cycles();
+            if (function_exists('gc_mem_caches')) {
+                gc_mem_caches();
+            }
+        }
+    }
+
     // Function to make API requests with session management
     private static function callTinyTinyRssApi($operation, $params = [], $session_id = null) {
         if ($session_id) {
@@ -620,6 +629,11 @@ final class FreshGReaderAPI extends Handler {
 	 * @return never
 	 */
 	private static function subscriptionEdit(array $streamNames, array $titles, string $action, string $session_id, string $add = '', string $remove = '') {
+		$uid = self::sessionToUserId($session_id);
+        if ($uid === null) {
+            self::unauthorized();
+        }
+
 		$category_id = 0;
 		if ($add != '' && strpos($add, 'user/-/label/') === 0) {
 			$categoryName = substr($add, 13);
@@ -678,7 +692,6 @@ final class FreshGReaderAPI extends Handler {
 						}
 						break;
 					case 'edit':
-						$uid = self::sessionToUserId($session_id);
 						if ($feedId > 0) {
 							if ($add != '' && strpos($add, 'user/-/label/') === 0) {
 								$categoryName = substr($add, 13);
@@ -707,6 +720,7 @@ final class FreshGReaderAPI extends Handler {
 				}
 			}
 		}
+		self::triggerGarbageCollection();
 		exit('OK');
 	}
 
@@ -949,7 +963,8 @@ final class FreshGReaderAPI extends Handler {
 		if ($totalItems >= $count) {
 			$result['continuation'] = $params['skip'];
 		}
-
+        unset($itemRefs);
+        self::triggerGarbageCollection();
 		echo json_encode($result, JSON_OPTIONS);
 		exit();
 	}
@@ -1044,6 +1059,10 @@ final class FreshGReaderAPI extends Handler {
 			$items = [];
 			foreach ($response['content'] as $article) {
 				$items[] = self::convertTtrssArticleToGreaderFormat($article);
+				// Trigger garbage collection every 100 items
+				if (count($items) % 100 == 0) {
+					self::triggerGarbageCollection();
+				}
 			}
 
 			$result = [
@@ -1056,7 +1075,7 @@ final class FreshGReaderAPI extends Handler {
 				$result['continuation'] = $params['skip'] + $count;
 			}
 			unset($items);
-			gc_collect_cycles();
+            self::triggerGarbageCollection();
 			echo json_encode($result, JSON_OPTIONS);
 			exit();
 		}
@@ -1414,6 +1433,7 @@ final class FreshGReaderAPI extends Handler {
 							self::streamContentsItems($e_ids, $order, $session_id);
 						}
 					}
+					self::triggerGarbageCollection();
 					break;
 				case 'tag':
 					if (isset($pathInfos[5]) && $pathInfos[5] === 'list') {
@@ -1421,6 +1441,7 @@ final class FreshGReaderAPI extends Handler {
 						if ($output !== 'json') self::notImplemented();
 						self::tagList($session_id);
 					}
+					self::triggerGarbageCollection();
 					break;
 				case 'subscription':
 					if (isset($pathInfos[5])) {
@@ -1459,6 +1480,7 @@ final class FreshGReaderAPI extends Handler {
 								break;
 						}
 					}
+					self::triggerGarbageCollection();
 					break;
 				case 'unread-count':
 					$output = $_GET['output'] ?? '';
@@ -1506,6 +1528,7 @@ final class FreshGReaderAPI extends Handler {
 					// Always exits
 			}
 		}
+		self::triggerGarbageCollection();
 		self::badRequest();
 	}
 }
