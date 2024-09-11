@@ -2,11 +2,11 @@
 A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
-Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS Reader server implementations, but before the release of FreshAPI had two main API integrations: 
+Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS Reader server implementations, but historically has had limited compatibility with third party RSS readers, which were only available through:
 1. The official API 
 2. The Fever API Plugin 
 
-While many mobile applications support either of these protocols, many do not. FreshAPI's goal is to be the bridge between Tiny-Tiny RSS and these fantastic mobile applications, while offering more functionality than either.
+While many mobile applications support either of these protocols, many do not. FreshAPI's goal is to be the bridge between Tiny-Tiny RSS and these fantastic mobile applications, while offering more functionality than either of the historically supported protocols.
 
 | Feature  | Fever API | Official API | FreshAPI |
 | :---: | :---: | :---: | :---: |
