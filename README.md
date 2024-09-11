@@ -1,5 +1,5 @@
 # FreshAPI
-A FreshRSS / Google Reader API Bridge for Tiny-Tiny RSS
+A FreshRSS / Google Reader API Implementation for Tiny-Tiny RSS
 
 ## Background
 Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS Reader server implementations, but before the release of FreshAPI had two main API integrations: 
