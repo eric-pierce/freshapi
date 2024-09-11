@@ -92,7 +92,7 @@ http {
                         fastcgi_pass $backend;
                 }
 
-                # Special handling for PHP files in plugins.local directories (with PATH_INFO)
+                # Allow PATH_INFO for PHP files in plugins.local directories with an /api/ sub directory
                 location ~ /plugins\.local/.*/api/.*\.php(/|$) {
                         fastcgi_split_path_info ^(.+?\.php)(/.*)$;
                         try_files $fastcgi_script_name =404;
@@ -118,14 +118,31 @@ http {
 }
 ```
 
-6. The official Docker setup for Tiny-Tiny RSS consists of three images. You will need to map the file you just created into the cthulhoo/ttrss-web-nginx:latest image as part of the docker setup.
+6. The official Docker setup for Tiny-Tiny RSS consists of three containers. You will need to map the file you just created into the cthulhoo/ttrss-web-nginx:latest container as part of the docker setup.
 ```yaml
     volumes:
       - $DOCKERDIR/ttrss:/var/www/html:ro
       - $DOCKERDIR/ttrss-nginx.conf.template:/etc/nginx/templates/nginx.conf.template
 ```
-Example full docker-compose portion for all three of TT-RSS's official images using [Traefik](https://github.com/traefik/traefik) and FreshAPI support below. 
+Example full docker-compose portion for all three of TT-RSS's official containers plus postgres as a backend database using [Traefik](https://github.com/traefik/traefik) and FreshAPI support below. 
 ```yaml
+########################### NETWORKS
+networks:
+  traefik:
+    name: traefik
+    external: true
+  default:
+    driver: bridge
+  internal:
+    external: false
+
+########################### SECRETS
+secrets:
+  postgres_root_password:
+    file: $SECRETSDIR/postgres_root_password
+
+########################### SERVICES
+services:
   app:
     container_name: ttrss-app
     image: cthulhoo/ttrss-fpm-pgsql-static:latest
@@ -197,6 +214,27 @@ Example full docker-compose portion for all three of TT-RSS's official images us
       ## HTTP Services
       - "traefik.http.routers.ttrss-rtr.service=ttrss-svc"
       - "traefik.http.services.ttrss-svc.loadbalancer.server.port=80"
+
+  postgres:
+    container_name: postgres
+    image: postgres:alpine
+    restart: unless-stopped
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:5432:5432"
+    secrets:
+      - postgres_root_password
+    volumes:
+      - $DOCKERDIR/postgres:/var/lib/postgresql/data
+    environment:
+      - TZ=$TZ
+      - PUID=$PUID
+      - PGID=$PGID
+      - POSTGRES_USER=$POSTGRES_USER
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_root_password
 ```
 7. Restart all images
 8. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://yoursubdomain.yourdomain.tld/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
@@ -215,11 +253,11 @@ The following clients have been tested. For any reports of additional client fun
 
 ## Updates
 
-There are no point releases, FreshAPI has a rolling release. If cloned into the plugins.local folder TT-RSS should keep the plugin up to date. 
+FreshAPI uses a rolling release approach, though I'll increment the version number for significant changes. If cloned into the plugins.local folder TT-RSS should keep the plugin up to date.
 
 ## Issues & Contributing
 
-Both Issues and Contributions/Pull Requests are welcome and encouraged - please feel free to open either.
+Both Issues and Contributions and Pull Requests are welcome and encouraged - please feel free to open either.
 
 If you'd like to donate to this project you can do so through *Buy Me A Coffee*
 
