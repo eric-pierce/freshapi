@@ -8,20 +8,21 @@ Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS R
 
 While many mobile applications support either of these protocols, many do not. FreshAPI's goal is to be the bridge between Tiny-Tiny RSS and these fantastic mobile applications, while offering more functionality than either of the historically supported protocols.
 
-| Feature  | Fever API | Official API | FreshAPI |
-| :---: | :---: | :---: | :---: |
-| Mark Article as Read/Unread | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Add/Remove Star from Article | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Mark Entire Feed/Category as Read | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Secure Implementation | :x: | :white_check_mark: | :white_check_mark: |
-| Subscribe to a Feed | :x: | :white_check_mark: | :white_check_mark: |
-| Unsubscribe from a Feed | :x: | :white_check_mark: | :white_check_mark: |
-| Rename a Feed | :x: | :x: | :white_check_mark: |
-| Add a Category to a Feed | :x: | :x: | :white_check_mark: |
-| Remove a Category from a Feed | :x: | :x: | :white_check_mark: |
-| Create a new Category | :x: | :x: | :white_check_mark: |
-| OPML Export | :x: | :x: | :white_check_mark: |
-| OPML Import | :x: | :x: | :white_check_mark: |
+| Feature  | Fever API | Official API | FreshAPI | Comments |
+| :---: | :---: | :---: | :---: | :---: |
+| Mark Article as Read/Unread | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
+| Add/Remove Star from Article | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
+| Mark Entire Feed/Category as Read | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
+| Secure Implementation | :x: | :white_check_mark: | :white_check_mark: | |
+| Subscribe to a Feed | :x: | :white_check_mark: | :white_check_mark: | |
+| Unsubscribe from a Feed | :x: | :white_check_mark: | :white_check_mark: | |
+| Rename a Feed | :x: | :x: | :white_check_mark: | |
+| Add a Category to a Feed | :x: | :x: | :white_check_mark: | |
+| Remove a Category from a Feed | :x: | :x: | :white_check_mark: | |
+| Create a new Category | :x: | :x: | :white_check_mark: | |
+| OPML Export | :x: | :x: | :white_check_mark: | |
+| OPML Import | :x: | :x: | :white_check_mark: | |
+| Trigger Individual Feed Update | :x: | :white_check_mark: | :x: | This feature not supported by the Google Reader API |
 
 ## Requirements
 
@@ -241,15 +242,17 @@ services:
 
 ## Compatible Clients
 
-The following clients have been tested. For any reports of additional client funcationality please open an issue with your experiences
+The following clients have been or will be tested. For any reports of additional client funcationality please open an issue with your experiences.
 
 | App | Platform | Status | Notes |
 | :---: | :---: | :---: | :---: |
-| Reeder | iOS | Fully Functional | None |
+| Reeder | iOS, macOS | Fully Functional | None |
 | NetNewsWire | iOS | Fully Functional | None |
 | Fiery Feeds | iOS | Fully Functional | None |
 | ReadKit | iOS | Fully Functional | None |
 | Fluent Reader | iOS | Not Functional | Investigation Needed |
+| FeedMe | Android | Not Tested | Testing Planned |
+| Readrops | Android | Not Tested | Testing Planned |
 
 ## Updates
 
