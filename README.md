@@ -8,7 +8,7 @@ Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS R
 
 While many mobile applications support either of these protocols, many do not. FreshAPI's goal is to be the bridge between Tiny-Tiny RSS and these fantastic mobile applications, while offering more functionality than either of the historically supported protocols.
 
-| Feature  | Fever API | Official API | FreshAPI | Comments |
+| Feature  | Fever API | Official API | FreshAPI | FreshAPI Comments |
 | :---: | :---: | :---: | :---: | :---: |
 | Mark Article as Read/Unread | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
 | Add/Remove Star from Article | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
@@ -262,7 +262,7 @@ FreshAPI uses a rolling release approach, though I'll increment the version numb
 
 Both Issues and Contributions and Pull Requests are welcome and encouraged - please feel free to open either.
 
-If you'd like to donate to this project you can do so through *Buy Me A Coffee*
+If you'd like to donate to this project you can do so here:
 
 <a href="https://www.buymeacoffee.com/ericpierce" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 

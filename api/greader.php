@@ -72,7 +72,7 @@ function headerVariable(string $headerName, string $varName): string {
 	return is_string($pairs[$varName]) ? $pairs[$varName] : '';
 }
 
-function escapeToUnicodeAlternative(string $text, bool $extended = true): string {
+function escapeToUnicodeAlternative(string $text, bool $extended = false): string {
 	$text = htmlspecialchars_decode($text, ENT_QUOTES);
 
 	//Problematic characters
