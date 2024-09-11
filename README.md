@@ -124,9 +124,7 @@ http {
       - $DOCKERDIR/ttrss:/var/www/html:ro
       - $DOCKERDIR/ttrss-nginx.conf.template:/etc/nginx/templates/nginx.conf.template
 ```
-
-For reference the entire three image setup I use is below. 
-
+Example full docker-compose portion for TT-RSS's official images and FreshAPI support below:
 ```yaml
   app:
     container_name: ttrss-app
@@ -201,8 +199,8 @@ For reference the entire three image setup I use is below.
       - "traefik.http.routers.ttrss-rtr.service=ttrss-svc"
       - "traefik.http.services.ttrss-svc.loadbalancer.server.port=80"
 ```
-5. Restart all images
-6. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://yoursubdomain.yourdomain.tld/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and user an App Password.
+7. Restart all images
+8. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://yoursubdomain.yourdomain.tld/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and user an App Password.
 
 ## Compatible Clients
 
