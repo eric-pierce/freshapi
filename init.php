@@ -3,6 +3,7 @@
 /**
 == Description ==
 Server-side API compatible with FreshRSS API for the Tiny Tiny RSS project https://tt-rss.org
+This plugin will use a rolling release approach, with notable changes mentioned in Versioning below
 
 == Credits ==
 * Adapted and implemented by Eric Pierce https://eric-pierce.com

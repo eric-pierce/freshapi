@@ -3,8 +3,8 @@ A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
 Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS Reader server implementations, but historically has had limited compatibility with third party RSS readers, which were only available through:
-1. The official API 
-2. The Fever API Plugin 
+1. [The Official API](https://tt-rss.org/ApiReference/)
+2. [The Fever API Plugin](https://github.com/DigitalDJ/tinytinyrss-fever-plugin)
 
 While many mobile applications support either of these protocols, many do not. FreshAPI's goal is to be the bridge between Tiny-Tiny RSS and these fantastic mobile applications, while offering more functionality than either of the historically supported protocols.
 
@@ -12,13 +12,13 @@ While many mobile applications support either of these protocols, many do not. F
 | :---: | :---: | :---: | :---: |
 | Mark Article as Read/Unread | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 | Add/Remove Star from Article | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| Mark Feed/Category as Read | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Mark Entire Feed/Category as Read | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 | Secure Implementation | :x: | :white_check_mark: | :white_check_mark: |
 | Subscribe to a Feed | :x: | :white_check_mark: | :white_check_mark: |
 | Unsubscribe from a Feed | :x: | :white_check_mark: | :white_check_mark: |
 | Rename a Feed | :x: | :x: | :white_check_mark: |
 | Add a Category to a Feed | :x: | :x: | :white_check_mark: |
-| Remove a Category to a Feed | :x: | :x: | :white_check_mark: |
+| Remove a Category from a Feed | :x: | :x: | :white_check_mark: |
 | Create a new Category | :x: | :x: | :white_check_mark: |
 | OPML Export | :x: | :x: | :white_check_mark: |
 | OPML Import | :x: | :x: | :white_check_mark: |
@@ -237,7 +237,7 @@ services:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_root_password
 ```
 7. Restart all images
-8. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://yoursubdomain.yourdomain.tld/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
+8. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://example.com/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Compatible Clients
 
@@ -262,15 +262,16 @@ Both Issues and Contributions and Pull Requests are welcome and encouraged - ple
 If you'd like to donate to this project you can do so through *Buy Me A Coffee*
 
 <a href="https://www.buymeacoffee.com/ericpierce" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 ## License
 
 This project is licensed under the [GNU AGPL 3 License](http://www.gnu.org/licenses/agpl-3.0.html)
 
 ## Acknowledgements
 
-- Major thanks to Tiny Tiny RSS and its developer for making the best self-hosted RSS reader available
+- Major thanks to Tiny Tiny RSS and its developer Fox for making the best self-hosted RSS reader available
 - Thanks to the FreshRSS team for both expanding on the Google Reader API and for providing an excellent example of implementation using PHP found at [here](https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php)
 
 ## Disclaimer
 
-This project is not affiliated with or endorsed by Google or Tiny Tiny RSS. Use at your own risk.
+This project is not affiliated with or endorsed by FreshRSS, Google, or Tiny Tiny RSS. Use at your own risk.
