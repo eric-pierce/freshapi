@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 error_reporting(E_ERROR | E_PARSE);
 
-
 $ttrss_root = dirname(__DIR__, 3);
 $config_path = $ttrss_root . "/config.php";
 
