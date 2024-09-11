@@ -23,7 +23,7 @@ class FreshAPI extends Plugin {
 			"FreshRSS API Bridge Plugin",
 			"Eric Pierce",
 			false,
-			"https://github.com/eric-pierce/freshapi");
+			"https://github.com/eric-pierce/FreshAPI");
 	}
 
     function api_version() {

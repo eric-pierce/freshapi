@@ -648,7 +648,6 @@ final class FreshGReaderAPI extends Handler {
 		}
 
 		foreach ($streamNames as $i => $streamUrl) {
-			error_log(print_r($streamUrl, true));
 			if (strpos($streamUrl, 'feed/') === 0) {
 				$streamUrl = substr($streamUrl, 5);
 				if (strpos($streamUrl, 'feed/') === 0) { //doubling up as some readers seem to push double feed/ prefixes here
@@ -1329,13 +1328,14 @@ final class FreshGReaderAPI extends Handler {
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
+		/*
 		error_log(print_r('PATH_INFO=',true));
         error_log(print_r($pathInfo,true));
 		error_log(print_r('GET=',true));
         error_log(print_r($_GET,true));
 		error_log(print_r('POST=',true));
 		error_log(print_r($_POST,true));
-
+		*/
 		$pathInfo = urldecode($pathInfo);
 		$pathInfo = '' . preg_replace('%^(/api)?(/greader\.php)?%', '', $pathInfo);	//Discard common errors
 		if ($pathInfo == '' && empty($_SERVER['QUERY_STRING'])) {
