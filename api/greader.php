@@ -233,8 +233,8 @@ final class FreshGReaderAPI extends Handler {
         if ($session_id) {
             $params['sid'] = $session_id;
         }
-    
-        $params['op'] = $operation;
+
+		$params['op'] = $operation;
         $curl = curl_init();
         curl_setopt($curl, CURLOPT_URL, TT_RSS_API_URL);
         curl_setopt($curl, CURLOPT_POST, true);
@@ -1095,7 +1095,7 @@ final class FreshGReaderAPI extends Handler {
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
 			'timestampUsec' => $article['updated'] . '000000', //'' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
 			'published' => $article['updated'],
-			'title' => escapeToUnicodeAlternative($article['title'],true),
+			'title' => escapeToUnicodeAlternative($article['title'],false),
 			//'updated' => date(DATE_ATOM, $article['updated']),
 			'canonical' => [
 				['href' => htmlspecialchars_decode($article['link'], ENT_QUOTES)]
