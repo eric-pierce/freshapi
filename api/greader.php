@@ -246,7 +246,7 @@ final class FreshGReaderAPI extends Handler {
 		return json_decode($response, true);
     }
 
-    // Function to check if the session is still valid
+	// Function to check if the session is still valid
     private static function isSessionActive($session_id) {
         $response = self::callTinyTinyRssApi('isLoggedIn', [], $session_id);
         return $response && isset($response['status']) && $response['status'] == 0 && $response['content']['status'] === true;
@@ -754,12 +754,19 @@ final class FreshGReaderAPI extends Handler {
 				], $session_id);
 
 				if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
+					$streamName = '';
+					foreach ($feedResponse['content'] as $feed) {
+						if ($feed['id'] == $feedId) {
+							$streamName = $feed['title'];
+							break;
+						}
+					}
 					$feed = $feedResponse['content'][0];
 					exit(json_encode([
 						'numResults' => 1,
 						'query' => $url,
 						'streamId' => 'feed/' . $feedId,
-						'streamName' => $feed['title'],
+						'streamName' => $streamName,
 					], JSON_OPTIONS));
 				}
 			}
