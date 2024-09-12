@@ -39,7 +39,9 @@ If you are using another installation and are running into problems or incompati
    git clone https://github.com/eric-pierce/freshapi.git
    ```  
 2. Navigate to the Preferences menu in Tiny Tiny RSS, and check the box under "General" titled "Enable API"
+  ![enable-api](https://github.com/user-attachments/assets/f79e6fe3-bfb0-4989-a0fb-0bda4ac8b84d)
 3. In Preferences, open the Plugin menu and enable "freshapi"
+   ![enable-plugin](https://github.com/user-attachments/assets/68260e5f-bcb8-4e14-a416-3d31104d9006)
 4. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://example.com/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Compatible Clients
