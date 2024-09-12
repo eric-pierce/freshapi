@@ -559,8 +559,8 @@ final class FreshGReaderAPI extends Handler {
 								'label' => $categoryMap[$feed['cat_id']]
 							]
 						],
-						'url' => isset($feed['feed_url']) ? $feed['feed_url'] : null,
-						'htmlUrl' => isset($feed['site_url']) ? $feed['site_url'] : null,
+						'url' => isset($feed['feed_url']) ? $feed['feed_url'] : '',
+						'htmlUrl' => isset($feed['feed_url']) ? $feed['feed_url'] : '', //site_url is not in the categories TTRSS API call
 						'iconUrl' => TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
 					];
 				}
@@ -572,9 +572,11 @@ final class FreshGReaderAPI extends Handler {
 	}
 
 	/** @return never */
-	private static function renameFeed($feed_id, $title, $uid) {
+	private static function renameFeed($feed_id, $title, $uid, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-
+		if (!self::isSessionActive($session_id)) {
+			exit();
+		}
 		$feed_id = clean($feed_id);
 		$title = clean($title);
 
@@ -590,7 +592,10 @@ final class FreshGReaderAPI extends Handler {
 		}
 	}
 
-	private static function addCategoryFeed(int $feedId, int $userId, int $category_id = -100, string $category_name = ''): bool {
+	private static function addCategoryFeed(int $feedId, int $userId, string $session_id, int $category_id = -100, string $category_name = ''): bool {
+		if (!self::isSessionActive($session_id)) {
+			exit();
+		}
 		try {
 			$pdo = Db::pdo();
 			$category_name = clean($category_name);
@@ -611,7 +616,10 @@ final class FreshGReaderAPI extends Handler {
 		}
 	}
 
-	private static function removeCategoryFeed(int $feedId, int $userId): bool {
+	private static function removeCategoryFeed(int $feedId, int $userId, string $session_id): bool {
+		if (!self::isSessionActive($session_id)) {
+			exit();
+		}
 		try {
 			$pdo = Db::pdo();
 			$sth = $pdo->prepare("UPDATE ttrss_feeds SET cat_id = NULL WHERE id = ? AND owner_uid = ?");
@@ -696,17 +704,17 @@ final class FreshGReaderAPI extends Handler {
 								if ($category_id == 0) {
 									$category_id = -100;
 								}
-								if (!self::addCategoryFeed($feedId, $uid, $category_id, $categoryName)) {
+								if (!self::addCategoryFeed($feedId, $uid, $session_id, $category_id, $categoryName)) {
 									self::badRequest();
 								}
 							}
 							if ($remove != '' && strpos($remove, 'user/-/label/') === 0) {
-								if (!self::removeCategoryFeed($feedId, $uid)) {
+								if (!self::removeCategoryFeed($feedId, $uid, $session_id)) {
 									self::badRequest();
 								}
 							}
 							if ($title != '') {
-								$renameFeedResponse = self::renameFeed($feedId, $title, $uid);
+								$renameFeedResponse = self::renameFeed($feedId, $title, $uid, $session_id);
 								if (!$renameFeedResponse) {
 									self::badRequest();
 								}
@@ -1109,7 +1117,7 @@ final class FreshGReaderAPI extends Handler {
 			],
 			'summary' => [
 				//'content' => $article['content'],
-				'content' => isset($article['content']) ? mb_strcut($article['content'], 0, 500000, 'UTF-8') : null,
+				'content' => isset($article['content']) ? mb_strcut($article['content'], 0, 500000, 'UTF-8') : '',
 			],
 			'author' => $article['author'],
 		];
@@ -1335,6 +1343,8 @@ final class FreshGReaderAPI extends Handler {
         error_log(print_r($_GET,true));
 		error_log(print_r('POST=',true));
 		error_log(print_r($_POST,true));
+		error_log(print_r('SERVER=',true));
+		error_log(print_r($_SERVER,true));
 		*/
 		$pathInfo = urldecode($pathInfo);
 		$pathInfo = '' . preg_replace('%^(/api)?(/greader\.php)?%', '', $pathInfo);	//Discard common errors

@@ -38,6 +38,9 @@ FreshAPI assumes that you're using the official docker based integration and run
    ```  
 2. Navigate to the Preferences menu in Tiny Tiny RSS, and check the box under "General" titled "Enable API"
 3. In Preferences, open the Plugin menu and enable "freshapi"
+
+**NOTE Steps 4-7 will not be needed after [this merge request](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/merge_requests/61) which was approved on 9/11 makes its way to the official docker images.**
+
 4. By Default the nginx settings in Tiny Tiny RSS's official docker images do not enable PATH_INFO, which the Google Reader API is built on. In order to enable PATH_INFO for FreshAPI, we'll need to update the official nginx.conf file by making a modification to /etc/nginx/templates/nginx.conf.template. This is very easy to do by mounting the file to your system using docker's volume.
 5. First create a new file called ```ttrss-nginx.conf.template``` containing the following:
 ```
