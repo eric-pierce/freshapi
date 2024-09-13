@@ -34,7 +34,7 @@ const JSON_OPTIONS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
 ini_set('session.use_cookies', "0");
 ini_set("session.gc_maxlifetime", "86400");
 
-ob_start();
+//ob_start();
 
 $ORIGINAL_INPUT = file_get_contents('php://input', false, null, 0, 1048576) ?: '';
 
@@ -55,11 +55,8 @@ if ($headerAuth != '') {
 
 startup_gettext();
 
-//error_log(print_r($_SERVER['PATH_INFO'], true));
-//error_log(print_r($_REQUEST, true));
+error_log(print_r($_SERVER['PATH_INFO'], true));
+error_log(print_r($_REQUEST, true));
 
 $freshapi = new FreshGReaderAPI($_REQUEST);
 $freshapi->parse();
-
-header("Api-Content-Length: " . ob_get_length());
-ob_end_flush();

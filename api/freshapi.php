@@ -111,13 +111,13 @@ if (PHP_INT_SIZE < 8) {	//32-bit
 final class FreshGReaderAPI extends API {
 
 	/** @return never */
-	private static function noContent() {
+	private function noContent() {
 		header('HTTP/1.1 204 No Content');
 		exit();
 	}
 
 	/** @return never */
-	private static function badRequest() {
+	private function badRequest() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 400 Bad Request');
@@ -126,7 +126,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function unauthorized() {
+	private function unauthorized() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 401 Unauthorized');
@@ -136,7 +136,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function internalServerError() {
+	private function internalServerError() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 500 Internal Server Error');
@@ -145,7 +145,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function notImplemented() {
+	private function notImplemented() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 501 Not Implemented');
@@ -154,7 +154,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function serviceUnavailable() {
+	private function serviceUnavailable() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
         error_log('HERE1');
@@ -164,7 +164,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function checkCompatibility() {
+	private function checkCompatibility() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('Content-Type: text/plain; charset=UTF-8');
@@ -179,13 +179,13 @@ final class FreshGReaderAPI extends API {
 		exit();
 	}
 
-	private static function dec2hex($dec): string {
+	private function dec2hex($dec): string {
 		return PHP_INT_SIZE < 8 ? // 32-bit ?
 			str_pad(gmp_strval(gmp_init($dec, 10), 16), 16, '0', STR_PAD_LEFT) :
 			str_pad(dechex((int)($dec)), 16, '0', STR_PAD_LEFT);
 	}
 
-    private static function triggerGarbageCollection(): void {
+    private function triggerGarbageCollection(): void {
         if (gc_enabled()) {
             gc_collect_cycles();
             if (function_exists('gc_mem_caches')) {
@@ -195,30 +195,41 @@ final class FreshGReaderAPI extends API {
     }
 
     // Function to make API requests with session management
-    private static function callTinyTinyRssApi($operation, $params = [], $session_id = null) {
-        if ($session_id) {
+    private function callTinyTinyRssApi($operation, $params = [], $session_id = null) {
+		if ($session_id) {
             $params['sid'] = $session_id;
         }
 
-		$params['op'] = $operation;
-        $curl = curl_init();
-        curl_setopt($curl, CURLOPT_URL, TT_RSS_API_URL);
-        curl_setopt($curl, CURLOPT_POST, true);
-        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($params));
-        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($curl, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        $response = curl_exec($curl);
-        curl_close($curl);
-		return json_decode($response, true);
+        $params['op'] = $operation;
+        $_REQUEST = null;
+        $_REQUEST = $params;
+
+        ob_start();
+
+		if ($operation && method_exists($this, $operation)) {
+			$result = parent::$operation($_REQUEST);
+		} else  { //if (method_exists($handler, 'index'))
+			$result = $this->index($operation);
+		}
+		$this->capturedOutput = ob_get_clean();
+		
+		// If the result is true (indicating success), return the captured output
+		if ($result === true) {
+			return json_decode($this->capturedOutput, true);
+		}
+		ob_end_flush();
+        // The result is already wrapped, so we can return it directly
+		header("Api-Content-Length: " . ob_get_length());
+        return $result;
     }
 
 	// Function to check if the session is still valid
-    private static function isSessionActive($session_id) {
+    private function isSessionActive($session_id) {
         $response = self::callTinyTinyRssApi('isLoggedIn', [], $session_id);
         return $response && isset($response['status']) && $response['status'] == 0 && $response['content']['status'] === true;
     }
 
-	private static function authorizationToUser(): string {
+	private function authorizationToUser(): string {
 		$headerAuth = headerVariable('Authorization', 'GoogleLogin_auth');
 		if ($headerAuth != '') {
 			$headerAuthX = explode('/', $headerAuth, 2);
@@ -233,12 +244,12 @@ final class FreshGReaderAPI extends API {
 		self::unauthorized();
 	}
 
-	private static function clientLogin(string $email, string $password) {
+	private function clientLogin(string $email, string $password) {
 		$loginResponse = self::callTinyTinyRssApi('login', [
 			'user' => $email,
 			'password' => $password
 		]);
-
+		
 		if ($loginResponse && isset($loginResponse['status']) && $loginResponse['status'] == 0) {
 			$session_id = $loginResponse['content']['session_id'];
 
@@ -257,7 +268,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function token(string $session_id) {
+	private function token(string $session_id) {
 		//http://blog.martindoms.com/2009/08/15/using-the-google-reader-api-part-1/
 		//https://github.com/ericmann/gReader-Library/blob/master/greader.class.php
 		if ($session_id === null || !self::isSessionActive($session_id)) {
@@ -269,7 +280,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 
-	private static function checkToken(string $token, string $session_id): bool {
+	private function checkToken(string $token, string $session_id): bool {
 		//http://code.google.com/p/google-reader-api/wiki/ActionToken
 		if ($session_id === null || !self::isSessionActive($session_id)) {
 			self::unauthorized();
@@ -282,7 +293,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function userInfo() {
+	private function userInfo() {
 		$user = $_SESSION['name'];
 		exit(json_encode(array(
 				'userId' => $user,
@@ -293,7 +304,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function tagList($session_id) {
+	private function tagList($session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 
 		$tags = [
@@ -356,7 +367,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function subscriptionExport(string $session_id) {
+	private function subscriptionExport(string $session_id) {
 		header('Content-Type: text/xml; charset=UTF-8');
 		header('Content-Disposition: attachment; filename="subscriptions.opml"');
 
@@ -414,7 +425,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function subscriptionImport(string $opml, string $session_id) {
+	private function subscriptionImport(string $opml, string $session_id) {
 		try {
 			$xml = new SimpleXMLElement($opml);
 			$imported = 0;
@@ -459,7 +470,7 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
-	private static function getCategoryId(string $categoryName, string $session_id): int {
+	private function getCategoryId(string $categoryName, string $session_id): int {
 		// First, try to find an existing category
 		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
@@ -473,7 +484,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function subscriptionList($session_id) {
+	private function subscriptionList($session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 
 		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
@@ -501,7 +512,7 @@ final class FreshGReaderAPI extends API {
 						],
 						'url' => isset($feed['feed_url']) ? $feed['feed_url'] : '',
 						'htmlUrl' => isset($feed['feed_url']) ? $feed['feed_url'] : '', //site_url is not in the categories TTRSS API call
-						'iconUrl' => TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
+						'iconUrl' => TTRSS_SELF_URL_PATH . '/public.php?op=feed_icon&id=' . $feed['id']//TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
 					];
 				}
 			}
@@ -512,7 +523,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function renameFeed($feed_id, $title, $uid, $session_id) {
+	private function renameFeed($feed_id, $title, $uid, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 		if (!self::isSessionActive($session_id)) {
 			exit();
@@ -532,7 +543,7 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
-	private static function addCategoryFeed(int $feedId, int $userId, string $session_id, int $category_id = -100, string $category_name = ''): bool {
+	private function addCategoryFeed(int $feedId, int $userId, string $session_id, int $category_id = -100, string $category_name = ''): bool {
 		if (!self::isSessionActive($session_id)) {
 			exit();
 		}
@@ -556,7 +567,7 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
-	private static function removeCategoryFeed(int $feedId, int $userId, string $session_id): bool {
+	private function removeCategoryFeed(int $feedId, int $userId, string $session_id): bool {
 		if (!self::isSessionActive($session_id)) {
 			exit();
 		}
@@ -575,7 +586,7 @@ final class FreshGReaderAPI extends API {
 	 * @param array<string> $titles
 	 * @return never
 	 */
-	private static function subscriptionEdit(array $streamNames, array $titles, string $action, string $session_id, string $add = '', string $remove = '') {
+	private function subscriptionEdit(array $streamNames, array $titles, string $action, string $session_id, string $add = '', string $remove = '') {
 		$uid = $_SESSION['uid'];
         if ($uid === null) {
             self::unauthorized();
@@ -671,7 +682,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function quickadd(string $url, string $session_id, int $category_id = 0) {
+	private function quickadd(string $url, string $session_id, int $category_id = 0) {
 		try {
 			$url = htmlspecialchars($url, ENT_COMPAT, 'UTF-8');
 			if (str_starts_with($url, 'feed/')) {
@@ -724,7 +735,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function unreadCount(string $session_id) {
+	private function unreadCount(string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 
 		$countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
@@ -788,7 +799,7 @@ final class FreshGReaderAPI extends API {
 	 * @param string|int $streamId
 	 * @phpstan-return array{'A'|'c'|'f'|'s'|'t',int,int}
 	 */
-	private static function streamContentsFilters(string $type, $streamId,
+	private function streamContentsFilters(string $type, $streamId,
 		string $filter_target, string $exclude_target, int $start_time, int $stop_time, string $session_id): array {
 		
 		$feed_id = -4; // Default to all feeds
@@ -861,7 +872,7 @@ final class FreshGReaderAPI extends API {
 		return [$type, $feed_id, $is_cat, $view_mode, trim($search)];
 	}
 
-	private static function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
+	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 
 		$params = [
@@ -922,7 +933,7 @@ final class FreshGReaderAPI extends API {
 		exit();
 	}
 
-	private static function streamContentsItems(array $e_ids, string $order, string $session_id) {
+	private function streamContentsItems(array $e_ids, string $order, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 		foreach ($e_ids as $i => $e_id) {
 			// https://feedhq.readthedocs.io/en/latest/api/terminology.html#items
@@ -960,7 +971,7 @@ final class FreshGReaderAPI extends API {
 		exit();
 	}
 
-	private static function streamContents(string $path, string $include_target, int $start_time, int $stop_time, int $count,
+	private function streamContents(string $path, string $include_target, int $start_time, int $stop_time, int $count,
     string $order, string $filter_target, string $exclude_target, string $continuation, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 			
@@ -1036,7 +1047,7 @@ final class FreshGReaderAPI extends API {
 		self::internalServerError();
 	}
 
-	private static function convertTtrssArticleToGreaderFormat($article) {
+	private function convertTtrssArticleToGreaderFormat($article) {
 		return [
 			'id' => 'tag:google.com,2005:reader/item/' . self::dec2hex(strval($article['id'])),
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
@@ -1074,7 +1085,7 @@ final class FreshGReaderAPI extends API {
 	 * @param array<string> $e_ids
 	 * @return never
 	 */
-	private static function editTag(array $e_ids, string $a, string $r, string $session_id): void {
+	private function editTag(array $e_ids, string $a, string $r, string $session_id): void {
 		$action = '';
 		$field = 0;
 
@@ -1110,7 +1121,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function renameTag(string $s, string $dest, string $session_id) {
+	private function renameTag(string $s, string $dest, string $session_id) {
 		if ($s != '' && strpos($s, 'user/-/label/') === 0 &&
 			$dest != '' && strpos($dest, 'user/-/label/') === 0) {
 			$oldName = substr($s, 13);
@@ -1158,7 +1169,7 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
-	private static function disableTag(string $s, string $session_id) {
+	private function disableTag(string $s, string $session_id) {
 		if ($s != '' && strpos($s, 'user/-/label/') === 0) {
 			$tagName = substr($s, 13);
 			$tagName = htmlspecialchars($tagName, ENT_COMPAT, 'UTF-8');
@@ -1215,7 +1226,7 @@ final class FreshGReaderAPI extends API {
 	 * @param numeric-string $olderThanId
 	 * @return never
 	 */
-	private static function markAllAsRead(string $streamId, string $olderThanId, string $session_id) {
+	private function markAllAsRead(string $streamId, string $olderThanId, string $session_id) {
 		$params = [
 			'is_cat' => false,
 			'article_ids' => '',
@@ -1264,6 +1275,7 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	public function parse() {
+        $ORIG_REQUEST = $_REQUEST;
 		global $ORIGINAL_INPUT;
         //error_log(print_r(self::API_LEVEL, true));
         //error_log(print_r($_SESSION, true));
@@ -1274,7 +1286,6 @@ final class FreshGReaderAPI extends API {
 		if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 			self::noContent();
 		}
-
 		$pathInfo = '';
 		if (empty($_SERVER['PATH_INFO'])) {
 			if (!empty($_SERVER['ORIG_PATH_INFO'])) {
@@ -1417,22 +1428,22 @@ final class FreshGReaderAPI extends API {
 								self::subscriptionList($session_id);
 								// Always exits
 							case 'edit':
-								if (isset($_REQUEST['s'], $_REQUEST['ac'])) {
+								if (isset($ORIG_REQUEST['s'], $ORIG_REQUEST['ac'])) {
 									//StreamId to operate on. The parameter may be repeated to edit multiple subscriptions at once
 									$streamNames = empty($_POST['s']) && isset($_GET['s']) ? array($_GET['s']) : multiplePosts('s');
 									/* Title to use for the subscription. For the `subscribe` action,
 									* if not specified then the feed's current title will be used. Can
 									* be used with the `edit` action to rename a subscription */
 									$titles = empty($_POST['t']) && isset($_GET['t']) ? array($_GET['t']) : multiplePosts('t');
-									$action = $_REQUEST['ac'];	//Action to perform on the given StreamId. Possible values are `subscribe`, `unsubscribe` and `edit`
-									$add = $_REQUEST['a'] ?? '';	//StreamId to add the subscription to (generally a user label)
-									$remove = $_REQUEST['r'] ?? '';	//StreamId to remove the subscription from (generally a user label)
+									$action = $ORIG_REQUEST['ac'];	//Action to perform on the given StreamId. Possible values are `subscribe`, `unsubscribe` and `edit`
+									$add = $ORIG_REQUEST['a'] ?? '';	//StreamId to add the subscription to (generally a user label)
+									$remove = $ORIG_REQUEST['r'] ?? '';	//StreamId to remove the subscription from (generally a user label)
 									self::subscriptionEdit($streamNames, $titles, $action, $session_id, $add, $remove);
 								}
 								break;
 							case 'quickadd':	//https://github.com/theoldreader/api
-								if (isset($_REQUEST['quickadd'])) {
-									self::quickadd($_REQUEST['quickadd'], $session_id);
+								if (isset($ORIG_REQUEST['quickadd'])) {
+									self::quickadd($ORIG_REQUEST['quickadd'], $session_id);
 								}
 								break;
 						}
