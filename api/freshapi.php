@@ -217,9 +217,10 @@ final class FreshGReaderAPI extends API {
 		if ($result === true) {
 			return json_decode($this->capturedOutput, true);
 		}
-		ob_end_flush();
+
         // The result is already wrapped, so we can return it directly
 		header("Api-Content-Length: " . ob_get_length());
+		ob_end_flush();
         return $result;
     }
 
@@ -274,8 +275,20 @@ final class FreshGReaderAPI extends API {
 		if ($session_id === null || !self::isSessionActive($session_id)) {
 			self::unauthorized();
 		}
-		$token = substr(hash('sha256', $session_id . 'salt'),0,57);	//Must have 57 characters
-		echo $token, "\n";
+
+		$salt = null;
+		try {
+			$pdo = Db::pdo();
+			$sth = $pdo->prepare("SELECT salt FROM ttrss_users WHERE id = ?");
+			$sth->execute([$_SESSION['uid']]);
+			$salt = $sth->fetch()[0];
+		} catch (PDOException $e) {
+			error_log("Database error when pulling salt: " . $e->getMessage());
+		}
+		if (isset($salt)) {
+			$token = substr(hash('sha256', $session_id . $salt),0,57);	//Must have 57 characters
+			echo $token, "\n";
+		}
 		exit();
 	}
 
@@ -285,8 +298,19 @@ final class FreshGReaderAPI extends API {
 		if ($session_id === null || !self::isSessionActive($session_id)) {
 			self::unauthorized();
 		}
-		if ($token === substr(hash('sha256', $session_id . 'salt'),0,57)) {
-			return true;
+		$salt = null;
+		try {
+			$pdo = Db::pdo();
+			$sth = $pdo->prepare("SELECT salt FROM ttrss_users WHERE id = ?");
+			$sth->execute([$_SESSION['uid']]);
+			$salt = $sth->fetch()[0];
+		} catch (PDOException $e) {
+			error_log("Database error when pulling salt: " . $e->getMessage());
+		}
+		if (isset($salt)) {
+			if ($token === substr(hash('sha256', $session_id . $salt),0,57)) {
+				return true;
+			}
 		}
 		error_log('Invalid POST token: ' . $token);
 		self::unauthorized();
@@ -512,12 +536,12 @@ final class FreshGReaderAPI extends API {
 						],
 						'url' => isset($feed['feed_url']) ? $feed['feed_url'] : '',
 						'htmlUrl' => isset($feed['feed_url']) ? $feed['feed_url'] : '', //site_url is not in the categories TTRSS API call
-						'iconUrl' => TTRSS_SELF_URL_PATH . '/public.php?op=feed_icon&id=' . $feed['id']//TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
+						'iconUrl' => TTRSS_SELF_URL_PATH . '/public.php?op=feed_icon&id=' . $feed['id'] . '.ico' //TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
 					];
 				}
 			}
 		}
-
+		//error_log(print_r($subscriptions, true));
 		echo json_encode(['subscriptions' => $subscriptions], JSON_OPTIONS), "\n";
 		exit();
 	}
@@ -701,7 +725,7 @@ final class FreshGReaderAPI extends API {
 
 				// Fetch the feed details
 				$feedResponse = self::callTinyTinyRssApi('getFeeds', [
-					'feed_id' => $feedId,
+					'cat_id' => $category_id,
 				], $session_id);
 
 				if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
@@ -1277,8 +1301,6 @@ final class FreshGReaderAPI extends API {
 	public function parse() {
         $ORIG_REQUEST = $_REQUEST;
 		global $ORIGINAL_INPUT;
-        //error_log(print_r(self::API_LEVEL, true));
-        //error_log(print_r($_SESSION, true));
 		header('Access-Control-Allow-Headers: Authorization');
 		header('Access-Control-Allow-Methods: GET, POST');
 		header('Access-Control-Allow-Origin: *');
@@ -1295,16 +1317,6 @@ final class FreshGReaderAPI extends API {
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
-		/*
-		error_log(print_r('PATH_INFO=',true));
-        error_log(print_r($pathInfo,true));
-		error_log(print_r('GET=',true));
-        error_log(print_r($_GET,true));
-		error_log(print_r('POST=',true));
-		error_log(print_r($_POST,true));
-		error_log(print_r('SERVER=',true));
-		error_log(print_r($_SERVER,true));
-		*/
 		$pathInfo = urldecode($pathInfo);
 		$pathInfo = '' . preg_replace('%^(/api)?(/greader\.php)?%', '', $pathInfo);	//Discard common errors
 		if ($pathInfo == '' && empty($_SERVER['QUERY_STRING'])) {

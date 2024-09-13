@@ -2,11 +2,11 @@
 A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
-Tiny-Tiny RSS is one of the most featureful and customizable self-hostable RSS Reader server implementations, but historically has had limited compatibility with third party RSS readers, which were only available through:
+Tiny-Tiny RSS is one of the best and most customizable self-hostable RSS Readers, but has limited compatibility with third party RSS readers, which were only available through:
 1. [The Official API](https://tt-rss.org/ApiReference/)
 2. [The Fever API Plugin](https://github.com/DigitalDJ/tinytinyrss-fever-plugin)
 
-While many mobile applications support either of these protocols, many do not. FreshAPI's goal is to be the bridge between Tiny-Tiny RSS and these fantastic mobile applications, while offering more functionality than either of the historically supported protocols.
+While many mobile applications support one of these protocols, many do not. FreshAPI implements the FreshRSS / Google Reader API to allow Tiny-Tiny RSS to be used with more third party apps, and with more features.
 
 | Feature  | Fever API | Official API | FreshAPI | FreshAPI Comments |
 | :---: | :---: | :---: | :---: | :---: |
@@ -57,7 +57,6 @@ The following clients have been or will be tested. For any reports of additional
 | ReadKit | iOS | Fully Functional | None |
 | Fluent Reader | iOS | Not Functional | Investigation Needed |
 | FeedMe | Android | Not Tested | Testing Planned |
-| Readrops | Android | Not Tested | Testing Planned |
 
 ## Updates
 
@@ -66,10 +65,6 @@ FreshAPI uses a rolling release approach, though I'll increment the version numb
 ## Issues & Contributing
 
 Both Issues and Contributions and Pull Requests are welcome and encouraged - please feel free to open either.
-
-If you'd like to donate to this project you can do so here:
-
-<a href="https://www.buymeacoffee.com/ericpierce" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ## License
 

@@ -20,12 +20,10 @@ set_include_path(implode(PATH_SEPARATOR, [
 	get_include_path(),
 ]));
 
-//require_once $config_path;
 require_once $ttrss_root . "/include/autoload.php";
 require_once $ttrss_root . "/include/sessions.php";
 require_once $ttrss_root . "/include/functions.php";
 require_once "./freshapi.php";
-//require_once $ttrss_root . "/classes/API.php";
 
 define('NO_SESSION_AUTOSTART', true);
 define('TTRSS_SELF_URL_PATH', clean($_SERVER["TTRSS_SELF_URL_PATH"]));
@@ -34,13 +32,10 @@ const JSON_OPTIONS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
 ini_set('session.use_cookies', "0");
 ini_set("session.gc_maxlifetime", "86400");
 
-//ob_start();
-
 $ORIGINAL_INPUT = file_get_contents('php://input', false, null, 0, 1048576) ?: '';
 
 if (!init_plugins()) return;
 
-//error_log(print_r(headerVariable('Authorization', 'GoogleLogin_auth'), true));
 $headerAuth = headerVariable('Authorization', 'GoogleLogin_auth');
 if ($headerAuth != '') {
 	$headerAuthX = explode('/', $headerAuth, 2);
@@ -55,8 +50,8 @@ if ($headerAuth != '') {
 
 startup_gettext();
 
-error_log(print_r($_SERVER['PATH_INFO'], true));
-error_log(print_r($_REQUEST, true));
+//error_log(print_r($_SERVER['PATH_INFO'], true));
+//error_log(print_r($_REQUEST, true));
 
 $freshapi = new FreshGReaderAPI($_REQUEST);
 $freshapi->parse();
