@@ -108,6 +108,12 @@ if (PHP_INT_SIZE < 8) {	//32-bit
 	}
 }
 
+function dec2hex($dec): string {
+	return PHP_INT_SIZE < 8 ? // 32-bit ?
+		str_pad(gmp_strval(gmp_init($dec, 10), 16), 16, '0', STR_PAD_LEFT) :
+		str_pad(dechex((int)($dec)), 16, '0', STR_PAD_LEFT);
+}
+
 final class FreshGReaderAPI extends API {
 
 	/** @return never */
@@ -157,7 +163,6 @@ final class FreshGReaderAPI extends API {
 	private function serviceUnavailable() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
-        error_log('HERE1');
 		header('HTTP/1.1 503 Service Unavailable');
 		header('Content-Type: text/plain; charset=UTF-8');
 		die('Service Unavailable!');
@@ -177,12 +182,6 @@ final class FreshGReaderAPI extends API {
 		}
 		echo 'PASS';
 		exit();
-	}
-
-	private function dec2hex($dec): string {
-		return PHP_INT_SIZE < 8 ? // 32-bit ?
-			str_pad(gmp_strval(gmp_init($dec, 10), 16), 16, '0', STR_PAD_LEFT) :
-			str_pad(dechex((int)($dec)), 16, '0', STR_PAD_LEFT);
 	}
 
     private function triggerGarbageCollection(): void {
@@ -310,6 +309,8 @@ final class FreshGReaderAPI extends API {
 		if (isset($salt)) {
 			if ($token === substr(hash('sha256', $session_id . $salt),0,57)) {
 				return true;
+			} else if (($token === '') && (substr($_SERVER['HTTP_USER_AGENT'], 0, 6) == 'FeedMe')) { //FeedMe apparently doesn't use tokens? Adding exception now, but may do away with token checking alltogether 
+				return true;
 			}
 		}
 		error_log('Invalid POST token: ' . $token);
@@ -352,10 +353,12 @@ final class FreshGReaderAPI extends API {
 		$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 		if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 			foreach ($labelsResponse['content'] as $label) {
-				$tags[] = [
-					'id' => 'user/-/label/' . htmlspecialchars_decode($label[1], ENT_QUOTES),
-					'type' => 'tag',
-				];
+				if (isset($label[1])) {
+					$tags[] = [
+						'id' => 'user/-/label/' . htmlspecialchars_decode($label[1], ENT_QUOTES),
+						'type' => 'tag',
+					];
+				}
 			}
 		}
 
@@ -385,7 +388,8 @@ final class FreshGReaderAPI extends API {
 				}
 			}
 		}
-
+		//error_log(print_r('TAGS', true)); //dbglog
+		//error_log(print_r($tags, true)); //dbglog
 		echo json_encode(['tags' => $tags], JSON_OPTIONS), "\n";
 		exit();
 	}
@@ -541,7 +545,8 @@ final class FreshGReaderAPI extends API {
 				}
 			}
 		}
-		//error_log(print_r($subscriptions, true));
+		//error_log(print_r('SUBSCRIPTIONS', true)); //dbglog
+		//error_log(print_r($subscriptions, true)); //dbglog
 		echo json_encode(['subscriptions' => $subscriptions], JSON_OPTIONS), "\n";
 		exit();
 	}
@@ -758,66 +763,120 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
-	/** @return never */
-	private function unreadCount(string $session_id) {
-		header('Content-Type: application/json; charset=UTF-8');
+private function unreadCount(string $session_id) {
+    header('Content-Type: application/json; charset=UTF-8');
 
-		$countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
-		
-		if (!($countersResponse && isset($countersResponse['status']) && $countersResponse['status'] == 0)) {
-			self::internalServerError();
-		}
+    // Fetch categories
+    $categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+    if (!($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0)) {
+        self::internalServerError();
+    }
 
-		$unreadcounts = [];
-		$totalUnreads = 0;
-		$maxTimestamp = 0;
+    $categories = [];
+    foreach ($categoriesResponse['content'] as $category) {
+        $categories[$category['id']] = $category['title'];
+    }
 
-		foreach ($countersResponse['content'] as $counter) {
-			$id = '';
-			$count = $counter['counter'];
-			$newestItemTimestampUsec = '0'; // TTRSS doesn't provide this, so we'll use 0
+    // Fetch labels
+    $labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
+    if (!($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0)) {
+        self::internalServerError();
+    }
 
-			switch ($counter['type']) {
-				case 'cat':
-					$id = 'user/-/label/' . $counter['title'];
-					break;
-				case 'feed':
-					$id = 'feed/' . $counter['id'];
-					break;
-				case 'labels':
-					$id = 'user/-/label/' . $counter['title'];
-					break;
-				default:
-					continue 2; // Skip this iteration if type is not recognized
-			}
+    $labels = [];
+    foreach ($labelsResponse['content'] as $label) {
+        $labels[$label[0]] = $label[1]; // label[0] is id, label[1] is caption
+    }
+	//error_log(print_r('LABELS', true));
+	//error_log(print_r($labelsResponse, true));
+	//error_log(print_r($labels, true));
+    // Fetch counters
+    $countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
+    if (!($countersResponse && isset($countersResponse['status']) && $countersResponse['status'] == 0)) {
+        self::internalServerError();
+    }
+	//error_log(print_r('COUNTERSRESPONSE', true));
+	//error_log(print_r($countersResponse, true));
+    $unreadcounts = [];
+    $totalUnreads = 0;
+    $maxTimestamp = time();
 
-			$unreadcounts[] = [
-				'id' => $id,
-				'count' => $count,
-				'newestItemTimestampUsec' => $newestItemTimestampUsec,
-			];
+    foreach ($countersResponse['content'] as $counter) {
+        $id = '';
+        $count = $counter['counter'];
 
-			if ($counter['type'] !== 'labels') { // Don't count labels in total
+
+ 	if (isset($counter['kind']) && ($counter['kind'] == 'cat')) {
+				$categoryTitle = $categories[$counter['id']] ?? $counter['title'];
+				$id = 'user/-/label/' . htmlspecialchars_decode($categoryTitle, ENT_QUOTES);
 				$totalUnreads += $count;
-			}
+		} else if (isset($counter['title'])) {
+			$id = 'feed/' . $counter['id'];
+			$totalUnreads += $count;
+		} else {
+                $labelTitle = $labels[$counter['id']] ?? $counter['id']; //BROKEN
+                $id = 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES);
 		}
 
-		// Add total unread count
-		$unreadcounts[] = [
-			'id' => 'user/-/state/com.google/reading-list',
-			'count' => $totalUnreads,
-			'newestItemTimestampUsec' => $maxTimestamp . '000000',
-		];
+        $unreadcounts[] = [
+            'id' => $id,
+            'count' => $count,
+            'newestItemTimestampUsec' => $maxTimestamp . '000000',
+        ];
+    }
 
-		$result = [
-			'max' => $totalUnreads,
-			'unreadcounts' => $unreadcounts,
-		];
+    // Add total unread count
+    $unreadcounts[] = [
+        'id' => 'user/-/state/com.google/reading-list',
+        'count' => $totalUnreads,
+        'newestItemTimestampUsec' => $maxTimestamp . '000000',
+    ];
 
-		echo json_encode($result, JSON_OPTIONS), "\n";
-		exit();
-	}
+    // Add categories with zero unread items
+    foreach ($categories as $catId => $catTitle) {
+        $found = false;
+        foreach ($unreadcounts as $unreadcount) {
+            if ($unreadcount['id'] === 'user/-/label/' . htmlspecialchars_decode($catTitle, ENT_QUOTES)) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $unreadcounts[] = [
+                'id' => 'user/-/label/' . htmlspecialchars_decode($catTitle, ENT_QUOTES),
+                'count' => 0,
+                'newestItemTimestampUsec' => $maxTimestamp . '000000',
+            ];
+        }
+    }
 
+    // Add labels with zero unread items
+    foreach ($labels as $labelId => $labelTitle) {
+        $found = false;
+        foreach ($unreadcounts as $unreadcount) {
+            if ($unreadcount['id'] === 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES)) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $unreadcounts[] = [
+                'id' => 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES),
+                'count' => 0,
+                'newestItemTimestampUsec' => $maxTimestamp . '000000',
+            ];
+        }
+    }
+
+    $result = [
+        'max' => $totalUnreads,
+        'unreadcounts' => $unreadcounts,
+    ];
+	//error_log(print_r('UNREADCOUNT', true)); //dbglog
+	//error_log(print_r($result, true));
+    echo json_encode($result, JSON_OPTIONS), "\n";
+    exit();
+}
 	/**
 	 * @param 'A'|'c'|'f'|'s' $type
 	 * @param string|int $streamId
@@ -953,6 +1012,8 @@ final class FreshGReaderAPI extends API {
 		}
         unset($itemRefs);
         self::triggerGarbageCollection();
+		//error_log(print_r('STREAMITEMIDS', true)); //dbglog
+		//error_log(print_r($result, true)); //dbglog
 		echo json_encode($result, JSON_OPTIONS);
 		exit();
 	}
@@ -1073,7 +1134,7 @@ final class FreshGReaderAPI extends API {
 
 	private function convertTtrssArticleToGreaderFormat($article) {
 		return [
-			'id' => 'tag:google.com,2005:reader/item/' . self::dec2hex(strval($article['id'])),
+			'id' => 'tag:google.com,2005:reader/item/' . dec2hex(strval($article['id'])),
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
 			'timestampUsec' => $article['updated'] . '000000', //'' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
 			'published' => $article['updated'],
@@ -1133,7 +1194,11 @@ final class FreshGReaderAPI extends API {
 
 		if ($action) {
 			foreach ($e_ids as $e_id) {
-				$article_id = hex2dec(basename($e_id));
+				if (!ctype_digit($e_id) || $e_id[0] === '0') {
+					$article_id = hex2dec(basename($e_id));	//Strip prefix 'tag:google.com,2005:reader/item/'
+				} else {
+					$article_id = $e_id;
+				}
 				$result = self::callTinyTinyRssApi($action, [
 					'article_ids' => $article_id,
 					'mode' => $mode,
@@ -1317,6 +1382,18 @@ final class FreshGReaderAPI extends API {
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
+/*
+		error_log(print_r('PATH_INFO=',true));
+        error_log(print_r($pathInfo,true));
+		error_log(print_r('GET=',true));
+        error_log(print_r($_GET,true));
+		error_log(print_r('POST=',true));
+		error_log(print_r($_POST,true));
+		error_log(print_r('SESSION=',true));
+		error_log(print_r($_SESSION,true));
+*/
+		$input = $_REQUEST;
+
 		$pathInfo = urldecode($pathInfo);
 		$pathInfo = '' . preg_replace('%^(/api)?(/greader\.php)?%', '', $pathInfo);	//Discard common errors
 		if ($pathInfo == '' && empty($_SERVER['QUERY_STRING'])) {
@@ -1328,12 +1405,12 @@ final class FreshGReaderAPI extends API {
 		}
 
 		if ($pathInfos[1] === 'accounts') {
-			if (($pathInfos[2] === 'ClientLogin') && isset($_POST['Email']) && isset($_POST['Passwd'])) {
-				self::clientLogin($_POST['Email'], $_POST['Passwd']);
+			if (($pathInfos[2] === 'ClientLogin') && isset($input['Email']) && isset($input['Passwd'])) {
+				self::clientLogin($input['Email'], $input['Passwd']);
 			}
 		} elseif (isset($pathInfos[3], $pathInfos[4]) && $pathInfos[1] === 'reader' && $pathInfos[2] === 'api' && $pathInfos[3] === '0') {
 			$session_id = self::authorizationToUser();
-			$timestamp = isset($_GET['ck']) ? (int)$_GET['ck'] : 0;	//ck=[unix timestamp] : Use the current Unix time here, helps Google with caching.
+			$timestamp = isset($input['ck']) ? (int)$input['ck'] : 0;	//ck=[unix timestamp] : Use the current Unix time here, helps Google with caching.
 			switch ($pathInfos[4]) {
 				case 'stream':
 					/* xt=[exclude target] : Used to exclude certain items from the feed.
@@ -1341,29 +1418,29 @@ final class FreshGReaderAPI extends API {
 					* that the current user has marked as read, or xt=feed/[feedurl] will
 					* exclude items from a particular feed (obviously not useful in this
 					* request, but xt appears in other listing requests). */
-					$exclude_target = $_GET['xt'] ?? '';
-					$filter_target = $_GET['it'] ?? '';
+					$exclude_target = $input['xt'] ?? '';
+					$filter_target = $input['it'] ?? '';
 					//n=[integer] : The maximum number of results to return.
-					$count = isset($_GET['n']) ? (int)$_GET['n'] : 20;
+					$count = isset($input['n']) ? (int)$input['n'] : 20;
 					//r=[d|n|o] : Sort order of item results. d or n gives items in descending date order, o in ascending order.
-					$order = $_GET['r'] ?? 'd';
+					$order = $input['r'] ?? 'd';
 					/* ot=[unix timestamp] : The time from which you want to retrieve
 					* items. Only items that have been crawled by Google Reader after
 					* this time will be returned. */
-					$start_time = isset($_GET['ot']) ? (int)$_GET['ot'] : 0;
-					$stop_time = isset($_GET['nt']) ? (int)$_GET['nt'] : 0;
+					$start_time = isset($input['ot']) ? (int)$input['ot'] : 0;
+					$stop_time = isset($input['nt']) ? (int)$input['nt'] : 0;
 					/* Continuation token. If a StreamContents response does not represent
 					* all items in a timestamp range, it will have a continuation attribute.
 					* The same request can be re-issued with the value of that attribute put
 					* in this parameter to get more items */
-					$continuation = isset($_GET['c']) ? trim($_GET['c']) : '';
+					$continuation = isset($input['c']) ? trim($input['c']) : '';
 					if (!ctype_digit($continuation)) {
 						$continuation = '';
 					}
 					if (isset($pathInfos[5]) && $pathInfos[5] === 'contents') {
-						if (!isset($pathInfos[6]) && isset($_GET['s'])) {
+						if (!isset($pathInfos[6]) && isset($input['s'])) {
 							// Compatibility BazQux API https://github.com/bazqux/bazqux-api#fetching-streams
-							$streamIdInfos = explode('/', $_GET['s']);
+							$streamIdInfos = explode('/', $input['s']);
 							foreach ($streamIdInfos as $streamIdInfo) {
 								$pathInfos[] = $streamIdInfo;
 							}
@@ -1402,13 +1479,13 @@ final class FreshGReaderAPI extends API {
 								$count, $order, $filter_target, $exclude_target, $continuation, $session_id);
 						}
 					} elseif ($pathInfos[5] === 'items') {
-						if ($pathInfos[6] === 'ids' && isset($_GET['s'])) {
+						if ($pathInfos[6] === 'ids' && isset($input['s'])) {
 							/* StreamId for which to fetch the item IDs. The parameter may
 							* be repeated to fetch the item IDs from multiple streams at once
 							* (more efficient from a backend perspective than multiple requests). */
-							$streamId = $_GET['s'];
+							$streamId = $input['s'];
 							self::streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id);
-						} elseif ($pathInfos[6] === 'contents' && isset($_POST['i'])) {	//FeedMe
+						} elseif ($pathInfos[6] === 'contents' && isset($input['i'])) {	//FeedMe
 							$e_ids = multiplePosts('i');	//item IDs
 							self::streamContentsItems($e_ids, $order, $session_id);
 						}
@@ -1417,7 +1494,7 @@ final class FreshGReaderAPI extends API {
 					break;
 				case 'tag':
 					if (isset($pathInfos[5]) && $pathInfos[5] === 'list') {
-						$output = $_GET['output'] ?? '';
+						$output = $input['output'] ?? '';
 						if ($output !== 'json') self::notImplemented();
 						self::tagList($session_id);
 					}
@@ -1435,18 +1512,18 @@ final class FreshGReaderAPI extends API {
 								}
 								break;
 							case 'list':
-								$output = $_GET['output'] ?? '';
+								$output = $input['output'] ?? '';
 								if ($output !== 'json') self::notImplemented();
 								self::subscriptionList($session_id);
 								// Always exits
 							case 'edit':
 								if (isset($ORIG_REQUEST['s'], $ORIG_REQUEST['ac'])) {
 									//StreamId to operate on. The parameter may be repeated to edit multiple subscriptions at once
-									$streamNames = empty($_POST['s']) && isset($_GET['s']) ? array($_GET['s']) : multiplePosts('s');
+									$streamNames = empty($input['s']) && isset($input['s']) ? array($input['s']) : multiplePosts('s');
 									/* Title to use for the subscription. For the `subscribe` action,
 									* if not specified then the feed's current title will be used. Can
 									* be used with the `edit` action to rename a subscription */
-									$titles = empty($_POST['t']) && isset($_GET['t']) ? array($_GET['t']) : multiplePosts('t');
+									$titles = empty($input['t']) && isset($input['t']) ? array($input['t']) : multiplePosts('t');
 									$action = $ORIG_REQUEST['ac'];	//Action to perform on the given StreamId. Possible values are `subscribe`, `unsubscribe` and `edit`
 									$add = $ORIG_REQUEST['a'] ?? '';	//StreamId to add the subscription to (generally a user label)
 									$remove = $ORIG_REQUEST['r'] ?? '';	//StreamId to remove the subscription from (generally a user label)
@@ -1463,38 +1540,38 @@ final class FreshGReaderAPI extends API {
 					self::triggerGarbageCollection();
 					break;
 				case 'unread-count':
-					$output = $_GET['output'] ?? '';
+					$output = $input['output'] ?? '';
 					if ($output !== 'json') self::notImplemented();
 					self::unreadCount($session_id);
 					// Always exits
 				case 'edit-tag':	//http://blog.martindoms.com/2010/01/20/using-the-google-reader-api-part-3/
-					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken($token, $session_id);
-					$a = $_POST['a'] ?? '';	//Add:	user/-/state/com.google/read	user/-/state/com.google/starred
-					$r = $_POST['r'] ?? '';	//Remove:	user/-/state/com.google/read	user/-/state/com.google/starred
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
+					$a = $input['a'] ?? '';	//Add:	user/-/state/com.google/read	user/-/state/com.google/starred
+					$r = $input['r'] ?? '';	//Remove:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$e_ids = multiplePosts('i');	//item IDs
 					self::editTag($e_ids, $a, $r, $session_id);
 					// Always exits
 				case 'rename-tag':    //https://github.com/theoldreader/api
-					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken($token, $session_id);
-					$s = $_POST['s'] ?? '';    //user/-/label/Folder
-					$dest = $_POST['dest'] ?? '';    //user/-/label/NewFolder
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
+					$s = $input['s'] ?? '';    //user/-/label/Folder
+					$dest = $input['dest'] ?? '';    //user/-/label/NewFolder
 					self::renameTag($s, $dest, $session_id);
 					// Always exits
 				case 'disable-tag':    //https://github.com/theoldreader/api
-					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken($token, $session_id);
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
 					$s_s = multiplePosts('s');
 					foreach ($s_s as $s) {
 						self::disableTag($s, $session_id);    //user/-/label/Folder
 					}
 					// Always exits
 				case 'mark-all-as-read':
-					$token = isset($_POST['T']) ? trim($_POST['T']) : '';
-					self::checkToken($token, $session_id);
-					$streamId = trim($_POST['s'] ?? '');
-					$ts = trim($_POST['ts'] ?? '0');    //Older than timestamp in nanoseconds
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
+					$streamId = trim($input['s'] ?? '');
+					$ts = trim($input['ts'] ?? '0');    //Older than timestamp in nanoseconds
 					if (!ctype_digit($ts)) {
 						self::badRequest();
 					}

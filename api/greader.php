@@ -26,9 +26,9 @@ require_once $ttrss_root . "/include/functions.php";
 require_once "./freshapi.php";
 
 define('NO_SESSION_AUTOSTART', true);
-define('TTRSS_SELF_URL_PATH', clean($_SERVER["TTRSS_SELF_URL_PATH"]));
-define('TT_RSS_API_URL', clean($_SERVER["TTRSS_SELF_URL_PATH"]) . '/api/');
+define('TTRSS_SELF_URL_PATH', preg_replace('/(\/api\/{1,}|\/+plugins(.local)?\/.{1,}\/{1,})?(\w+\.php).*/', '', Config::get_self_url()));
 const JSON_OPTIONS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+
 ini_set('session.use_cookies', "0");
 ini_set("session.gc_maxlifetime", "86400");
 
