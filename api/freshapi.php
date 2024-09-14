@@ -348,48 +348,16 @@ final class FreshGReaderAPI extends API {
 				}
 			}
 		}
-
 		// Fetch labels (tags)
 		$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 		if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 			foreach ($labelsResponse['content'] as $label) {
-				if (isset($label[1])) {
-					$tags[] = [
-						'id' => 'user/-/label/' . htmlspecialchars_decode($label[1], ENT_QUOTES),
-						'type' => 'tag',
-					];
-				}
+				$tags[] = [
+					'id' => 'user/-/label/' . htmlspecialchars_decode($label['caption'], ENT_QUOTES),
+					'type' => 'tag',
+				];
 			}
 		}
-
-		// Fetch unread counts
-		$countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
-
-		if ($countersResponse && isset($countersResponse['status']) && $countersResponse['status'] == 0) {
-			foreach ($countersResponse['content'] as $counter) {
-				if (isset($counter['kind'])) {
-					if ($counter['kind'] == 'cat') {
-						$categoryTitle = $counter['title'] ?? '';
-						foreach ($tags as &$tag) {
-							if ($tag['id'] === 'user/-/label/' . $categoryTitle) {
-								$tag['unread_count'] = $counter['counter'];
-								break;
-							}
-						}
-					} elseif ($counter['kind'] == 'label') {
-						$labelTitle = $counter['title'] ?? '';
-						foreach ($tags as &$tag) {
-							if ($tag['id'] === 'user/-/label/' . $labelTitle) {
-								$tag['unread_count'] = $counter['counter'];
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
-		//error_log(print_r('TAGS', true)); //dbglog
-		//error_log(print_r($tags, true)); //dbglog
 		echo json_encode(['tags' => $tags], JSON_OPTIONS), "\n";
 		exit();
 	}
@@ -763,120 +731,77 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
-private function unreadCount(string $session_id) {
-    header('Content-Type: application/json; charset=UTF-8');
-
-    // Fetch categories
-    $categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
-    if (!($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0)) {
-        self::internalServerError();
-    }
-
-    $categories = [];
-    foreach ($categoriesResponse['content'] as $category) {
-        $categories[$category['id']] = $category['title'];
-    }
-
-    // Fetch labels
-    $labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
-    if (!($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0)) {
-        self::internalServerError();
-    }
-
-    $labels = [];
-    foreach ($labelsResponse['content'] as $label) {
-        $labels[$label[0]] = $label[1]; // label[0] is id, label[1] is caption
-    }
-	//error_log(print_r('LABELS', true));
-	//error_log(print_r($labelsResponse, true));
-	//error_log(print_r($labels, true));
-    // Fetch counters
-    $countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
-    if (!($countersResponse && isset($countersResponse['status']) && $countersResponse['status'] == 0)) {
-        self::internalServerError();
-    }
-	//error_log(print_r('COUNTERSRESPONSE', true));
-	//error_log(print_r($countersResponse, true));
-    $unreadcounts = [];
-    $totalUnreads = 0;
-    $maxTimestamp = time();
-
-    foreach ($countersResponse['content'] as $counter) {
-        $id = '';
-        $count = $counter['counter'];
-
-
- 	if (isset($counter['kind']) && ($counter['kind'] == 'cat')) {
-				$categoryTitle = $categories[$counter['id']] ?? $counter['title'];
-				$id = 'user/-/label/' . htmlspecialchars_decode($categoryTitle, ENT_QUOTES);
-				$totalUnreads += $count;
-		} else if (isset($counter['title'])) {
-			$id = 'feed/' . $counter['id'];
-			$totalUnreads += $count;
-		} else {
-                $labelTitle = $labels[$counter['id']] ?? $counter['id']; //BROKEN
-                $id = 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES);
+	private function unreadCount(string $session_id) {
+		header('Content-Type: application/json; charset=UTF-8');
+	    
+		// Fetch categories
+		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		if (!($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0)) {
+			self::internalServerError();
+		}
+	
+		$categories = [];
+		foreach ($categoriesResponse['content'] as $category) {
+			$categories[$category['id']] = $category['title'];
+		}
+	
+		// Fetch labels
+		$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
+		if (!($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0)) {
+			self::internalServerError();
 		}
 
-        $unreadcounts[] = [
-            'id' => $id,
-            'count' => $count,
-            'newestItemTimestampUsec' => $maxTimestamp . '000000',
-        ];
-    }
+		$labels = [];
+		foreach ($labelsResponse['content'] as $label) {
+			$labels[$label['id']] = $label['caption']; // label[0] is id, label[1] is caption
+		}
 
-    // Add total unread count
-    $unreadcounts[] = [
-        'id' => 'user/-/state/com.google/reading-list',
-        'count' => $totalUnreads,
-        'newestItemTimestampUsec' => $maxTimestamp . '000000',
-    ];
+		$countersResponse = self::callTinyTinyRssApi('getCounters', [], $session_id);
+		if (!($countersResponse && isset($countersResponse['status']) && $countersResponse['status'] == 0)) {
+			self::internalServerError();
+		}
+	
+		$unreadcounts = [];
+		$totalUnreads = 0;
+		$maxTimestamp = time();
+	
+		foreach ($countersResponse['content'] as $counter) {
+			$id = '';
+			$count = $counter['counter'];
+			$lastUpdate = $counter['ts'] ?? '0000000000';
+			$lastUpdate = $lastUpdate . '000000';
+			//error_log(print_r($counter, true));
+			if (isset($counter['kind']) && ($counter['kind'] == 'cat')) {
+				$categoryTitle = $categories[$counter['id']] ?? $counter['title'];
+				$id = 'user/-/label/' . htmlspecialchars_decode($categoryTitle, ENT_QUOTES);
+			} else if (isset($counter['title'])) {
+				$id = 'feed/' . $counter['id'];
+			} else if ($counter['id'] && array_key_exists('description', $counter)) {
+				$labelTitle = $labels[$counter['id']] ?? $counter['description']; 
+				$id = 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES);
+			} else if ($counter['id'] == 'global-unread') {
+				$labelTitle = $labels[$counter['id']] ?? $counter['description']; 
+				$id = 'user/-/state/com.google/reading-list';
+				$totalUnreads = $count;
+			}else {
+				continue;
+			}
+	
+			$unreadcounts[] = [
+				'id' => $id,
+				'count' => $count,
+				'newestItemTimestampUsec' => $lastUpdate, //$maxTimestamp . '000000',
+			];
+		}
 
-    // Add categories with zero unread items
-    foreach ($categories as $catId => $catTitle) {
-        $found = false;
-        foreach ($unreadcounts as $unreadcount) {
-            if ($unreadcount['id'] === 'user/-/label/' . htmlspecialchars_decode($catTitle, ENT_QUOTES)) {
-                $found = true;
-                break;
-            }
-        }
-        if (!$found) {
-            $unreadcounts[] = [
-                'id' => 'user/-/label/' . htmlspecialchars_decode($catTitle, ENT_QUOTES),
-                'count' => 0,
-                'newestItemTimestampUsec' => $maxTimestamp . '000000',
-            ];
-        }
-    }
-
-    // Add labels with zero unread items
-    foreach ($labels as $labelId => $labelTitle) {
-        $found = false;
-        foreach ($unreadcounts as $unreadcount) {
-            if ($unreadcount['id'] === 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES)) {
-                $found = true;
-                break;
-            }
-        }
-        if (!$found) {
-            $unreadcounts[] = [
-                'id' => 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES),
-                'count' => 0,
-                'newestItemTimestampUsec' => $maxTimestamp . '000000',
-            ];
-        }
-    }
-
-    $result = [
-        'max' => $totalUnreads,
-        'unreadcounts' => $unreadcounts,
-    ];
-	//error_log(print_r('UNREADCOUNT', true)); //dbglog
-	//error_log(print_r($result, true));
-    echo json_encode($result, JSON_OPTIONS), "\n";
-    exit();
-}
+		$result = [
+			'max' => $totalUnreads,
+			'unreadcounts' => $unreadcounts,
+		];
+		//error_log(print_r($result, true));
+		echo json_encode($result, JSON_OPTIONS), "\n";
+		exit();
+	}
 	/**
 	 * @param 'A'|'c'|'f'|'s' $type
 	 * @param string|int $streamId
