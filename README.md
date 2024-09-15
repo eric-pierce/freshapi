@@ -58,6 +58,30 @@ The following clients have been or will be tested. For any reports of additional
 | Fluent Reader | iOS | Not Functional | Investigation Needed |
 | FeedMe | Android | Not Tested | Testing Planned |
 
+## Using the API
+Email=newtest&Passwd=CSprRVgj^*aPGYA3
+FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
+
+1. Authorization
+Make a POST cURL call to your server's ClientLogin Endpoint using your TT-RSS username and password. If you have enabled 2FA you can use an App password generated in the TT-RSS preferences pane
+```console
+foo@bar:~$ curl -X POST --data 'Email=yourusername&Passwd=yourpassword' https://example.com/tt-rss/plugins.local/freshapi/api/greader.php/accounts/ClientLogin/
+```
+This will return your authorization credentials in the format 'username/session_id"
+```
+SID=yourusername/r4ih6gt412opqh11gptp3hodd6
+LSID=
+Auth=yourusername/r4ih6gt412opqh11gptp3hodd6
+```
+
+2. Make Desired API Call
+Take the username/session_id combination from step 1 and make a new cURL call to the endpoint you'd like to use. In this case we'll ask to export the subscription, folder, and tag OPML through the subscription export feature:
+
+```console
+foo@bar:~$ curl -X POST --header 'Authorization: GoogleLogin auth=yourusername/r4ih6gt412opqh11gptp3hodd6' https://example.com/tt-rss/plugins.local/freshapi/api/greader.php/reader/api/0/subscription/export
+```
+In the example above the cURL call will return your subscription OPML in XML form.
+
 ## Updates
 
 FreshAPI uses a rolling release approach, though I'll increment the version number for significant changes. If cloned into the plugins.local folder TT-RSS should keep the plugin up to date.
