@@ -62,6 +62,7 @@ The following clients have been or will be tested. For any reports of additional
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
 
 1. Authorization
+
 Make a POST cURL call to your server's ClientLogin Endpoint using your TT-RSS username and password. If you have enabled 2FA you can use an App password generated in the TT-RSS preferences pane
 ```console
 foo@bar:~$ curl -X POST --data 'Email=yourusername&Passwd=yourpassword' https://example.com/tt-rss/plugins.local/freshapi/api/greader.php/accounts/ClientLogin/
@@ -74,6 +75,7 @@ Auth=yourusername/r4ih6gt412opqh11gptp3hodd6
 ```
 
 2. Make Desired API Call
+
 Take the username/session_id combination from step 1 and make a new cURL call to the endpoint you'd like to use. In this case we'll ask to export the subscription, folder, and tag OPML through the subscription export feature:
 
 ```console
