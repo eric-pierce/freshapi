@@ -169,6 +169,15 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/** @return never */
+	private function apiNotEnabled() {
+		error_log(__METHOD__);
+		error_log(__METHOD__ . ' ' . debugInfo());
+		header('HTTP/1.1 503 Service Unavailable');
+		header('Content-Type: text/plain; charset=UTF-8');
+		die('API Not Enabled in TT-RSS Pref Pane!');
+	}
+
+	/** @return never */
 	private function checkCompatibility() {
 		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
@@ -358,112 +367,43 @@ final class FreshGReaderAPI extends API {
 				];
 			}
 		}
+		//error_log(print_r($tags, true));
 		echo json_encode(['tags' => $tags], JSON_OPTIONS), "\n";
 		exit();
 	}
 
 	/** @return never */
 	private function subscriptionExport(string $session_id) {
-		header('Content-Type: text/xml; charset=UTF-8');
-		header('Content-Disposition: attachment; filename="subscriptions.opml"');
+		$_REQUEST['include_settings'] = 1;
+		$opml = new OPML($_REQUEST);
+		$opml_exp = $opml->export();
 
-		// Fetch categories
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
-		$categories = [];
-		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
-			$categories = $categoriesResponse['content'];
-		}
-
-		// Fetch feeds
-		$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => -4], $session_id);
-		$feeds = [];
-		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
-			$feeds = $feedsResponse['content'];
-		}
-
-		// Generate OPML
-		$opml = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><opml version="1.0"></opml>');
-		$head = $opml->addChild('head');
-		$head->addChild('title', 'FreshAPI TT-RSS Subscriptions Export');
-		$body = $opml->addChild('body');
-
-		foreach ($categories as $category) {
-			$outline = $body->addChild('outline');
-			$outline->addAttribute('text', htmlspecialchars($category['title']));
-			$outline->addAttribute('title', htmlspecialchars($category['title']));
-
-			foreach ($feeds as $feed) {
-				if ($feed['cat_id'] == $category['id']) {
-					$feedOutline = $outline->addChild('outline');
-					$feedOutline->addAttribute('type', 'rss');
-					$feedOutline->addAttribute('text', htmlspecialchars(strval($feed['title'])));
-					$feedOutline->addAttribute('title', htmlspecialchars(strval($feed['title'])));
-					$feedOutline->addAttribute('xmlUrl', htmlspecialchars(strval($feed['feed_url'])));
-					$feedOutline->addAttribute('htmlUrl', htmlspecialchars(strval($feed['feed_url'])));
-				}
-			}
-		}
-
-		// Add uncategorized feeds
-		foreach ($feeds as $feed) {
-			if ($feed['cat_id'] == 0) {
-				$feedOutline = $body->addChild('outline');
-				$feedOutline->addAttribute('type', 'rss');
-				$feedOutline->addAttribute('text', htmlspecialchars(strval($feed['title'])));
-				$feedOutline->addAttribute('title', htmlspecialchars(strval($feed['title'])));
-				$feedOutline->addAttribute('xmlUrl', htmlspecialchars(strval($feed['feed_url'])));
-				$feedOutline->addAttribute('htmlUrl', htmlspecialchars(strval($feed['feed_url'])));
-			}
-		}
-
-		echo $opml->asXML();
+		echo $opml_exp[0];
 		exit();
 	}
 
 	/** @return never */
 	private function subscriptionImport(string $opml, string $session_id) {
-		try {
-			$xml = new SimpleXMLElement($opml);
-			$imported = 0;
-			$failed = 0;
+		
+		$ttrss_root = dirname(__DIR__, 3);
+		$config_path = $ttrss_root . "/config.php";
 
-			foreach ($xml->xpath('//outline') as $outline) {
-				$attributes = $outline->attributes();
-				if (isset($attributes['xmlUrl'])) {
-					// This is a feed
-					$feedUrl = (string)$attributes['xmlUrl'];
-					$title = (string)($attributes['title'] ?? $attributes['text'] ?? '');
-					$categoryId = 0;
-
-					// Check if this feed is inside a category
-					$parent = $outline->xpath('parent::outline');
-					if (!empty($parent)) {
-						$categoryName = (string)$parent[0]->attributes()['text'];
-						$categoryId = self::getCategoryId($categoryName, $session_id);
-					}
-
-					// Subscribe to the feed
-					$response = self::callTinyTinyRssApi('subscribeToFeed', [
-						'feed_url' => $feedUrl,
-						'category_id' => $categoryId,
-						'title' => $title,
-					], $session_id);
-
-					if ($response && isset($response['status']) && $response['status'] == 0) {
-						$imported++;
-					} else {
-						$failed++;
-					}
-				}
-			}
-
-			header('Content-Type: text/plain; charset=UTF-8');
-			echo "OK\nImported: $imported\nFailed: $failed";
-			exit();
-		} catch (Exception $e) {
-			error_log('OPML import error: ' . $e->getMessage());
-			self::badRequest();
+		if (!file_exists($config_path)) {
+			$ttrss_root = dirname(__DIR__, 2);
 		}
+
+		$tmp_file = $ttrss_root . '/' . Config::get(Config::CACHE_DIR) . '/upload/' . $_SESSION['name'] . '_opml_import.opml';
+		file_put_contents($tmp_file, $opml);
+		$upl_opml = new OPML($_REQUEST);
+        ob_start();
+		$opml_imp = $upl_opml->opml_import($_SESSION["uid"], $tmp_file);
+		$capturedOutput = ob_get_clean();
+		ob_end_flush();
+		$capturedOutput = preg_replace('/(&nbsp;|<br\/>)+/', "\n", $capturedOutput);
+		$capturedOutput = $capturedOutput . "Done!";
+		unlink($tmp_file);
+		echo $capturedOutput;
+		exit();
 	}
 
 	private function getCategoryId(string $categoryName, string $session_id): int {
@@ -780,7 +720,7 @@ final class FreshGReaderAPI extends API {
 				$labelTitle = $labels[$counter['id']] ?? $counter['description']; 
 				$id = 'user/-/label/' . htmlspecialchars_decode($labelTitle, ENT_QUOTES);
 			} else if ($counter['id'] == 'global-unread') {
-				$labelTitle = $labels[$counter['id']] ?? $counter['description']; 
+				$labelTitle = $labels[$counter['id']] ?? array_key_exists('description', $counter) ? $counter['description'] : null; 
 				$id = 'user/-/state/com.google/reading-list';
 				$totalUnreads = $count;
 			}else {
