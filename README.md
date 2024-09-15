@@ -59,7 +59,6 @@ The following clients have been or will be tested. For any reports of additional
 | FeedMe | Android | Not Tested | Testing Planned |
 
 ## Using the API
-Email=newtest&Passwd=CSprRVgj^*aPGYA3
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
 
 1. Authorization
