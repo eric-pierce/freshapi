@@ -518,6 +518,34 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
+	private function deleteCategory(int $catId, int $userId, string $session_id): bool {
+		if (!self::isSessionActive($session_id)) {
+			exit();
+		}
+		try {
+			$pdo = Db::pdo();
+			$sth = $pdo->prepare("SELECT count(*) FROM ttrss_feeds WHERE cat_id = ? and owner_uid = ?");
+			$sth->execute([$catId, $userId]);
+			$count = $sth->fetch()[0];
+		} catch (PDOException $e) {
+			error_log("Database error when removing category from feed: " . $e->getMessage());
+			return false;
+		}
+		if ($count != 0) {
+			error_log("Category Not Empty");
+			return false;
+		} else {
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("DELETE FROM ttrss_feed_categories WHERE id = ? AND owner_uid = ?");
+				return $sth->execute([$catId, $userId]);
+			} catch (PDOException $e) {
+				error_log("Database error when removing category from feed: " . $e->getMessage());
+				return false;
+			}
+		}
+	}
+
 	/**
 	 * @param array<string> $streamNames
 	 * @param array<string> $titles
@@ -708,8 +736,8 @@ final class FreshGReaderAPI extends API {
 		foreach ($countersResponse['content'] as $counter) {
 			$id = '';
 			$count = $counter['counter'];
-			$lastUpdate = $counter['ts'] ?? '0000000000';
-			$lastUpdate = $lastUpdate . '000000';
+			$lastUpdate = isset($counter['ts']) ? strval($counter['ts']) : '0';
+			$lastUpdate = str_pad($lastUpdate, 16, "0", STR_PAD_RIGHT);
 			//error_log(print_r($counter, true));
 			if (isset($counter['kind']) && ($counter['kind'] == 'cat')) {
 				$categoryTitle = $categories[$counter['id']] ?? $counter['title'];
@@ -819,6 +847,107 @@ final class FreshGReaderAPI extends API {
 
 		return [$type, $feed_id, $is_cat, $view_mode, trim($search)];
 	}
+/*
+	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
+		header('Content-Type: application/json; charset=UTF-8');
+		//error_log(print_r($exclude_target, true));
+		$params = [
+			'limit' => $count, // TT-RSS API limit
+			'skip' => $continuation ? intval($continuation) : 0,
+			//'since_id' => $start_time,
+			'include_attachments' => false,
+			'view_mode' => ($exclude_target == 'user/-/state/com.google/read') ? 'unread' : 'all_articles', // Adjust as needed
+			'feed_id' => -4, //seting to all articles by default
+			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
+		];
+	
+		// Set feed_id based on streamId
+		if (strpos($streamId, 'feed/') === 0) {
+			$params['feed_id'] = substr($streamId, 5);
+		} elseif (strpos($streamId, 'user/-/label/') === 0) {
+			$params['cat_id'] = substr($streamId, 13);
+		} elseif ($streamId === 'user/-/state/com.google/reading-list') {
+			$params['feed_id'] = -4;
+		} elseif ($streamId === 'user/-/state/com.google/starred') {
+			$params['feed_id'] = -1;
+			$params['view_mode'] = 'marked';
+		}
+		//todo - add read?
+		$itemRefs = [];
+		$totalFetched = 0;
+		$moreAvailable = false;
+	
+		while (($totalFetched < $count) && ($count <= 15000)) {
+			$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
+			
+			if (!($response && isset($response['status']) && $response['status'] == 0)) {
+				self::internalServerError();
+			}
+	
+			$items = $response['content'];
+			$itemCount = count($items);
+			
+			foreach ($items as $article) {
+				if ($totalFetched < $count) {
+					if (intval($article['updated']) > (isset($start_time) ? intval($start_time) : 0)) {
+						//error_log(print_r($article['id'],true));
+						$itemRefs[] = [
+							'id' => '' . $article['id'],
+							//'directStreamIds' => ['feed/' . $article['feed_id']], //Apparently these aren't needed? Will exclude while testing
+							//'timestampUsec' => $article['updated'] . '000000',
+						];
+						$totalFetched++;
+				}
+				} else {
+					$moreAvailable = true;
+					break;
+				}
+			}
+	
+			if ($itemCount < 200) {
+				// We've reached the end of available items
+				break;
+			}
+	
+			$params['skip'] += $itemCount;
+		}
+
+		$result = [
+			'itemRefs' => $itemRefs,
+		];
+	
+		if ($moreAvailable || ($totalFetched == $count)) {
+			// There are more items available
+			$result['continuation'] = ($continuation ? intval($continuation) : 0) + $totalFetched;
+		}
+		unset($itemRefs);
+		//error_log(print_r($result,true));
+		self::triggerGarbageCollection();
+		echo json_encode($result, JSON_OPTIONS), "\n";
+		exit();
+	}
+*/
+
+	private function getCategoryLabelID($cat_id, $session_id) {
+		// First, check if it's a category
+		$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
+		if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
+			foreach ($categoryResponse['content'] as $category) {
+				if ($category['title'] == $cat_id) {
+					return intval($category['id']);
+				}
+			}
+		} 
+		// Not a Category, must be a label. Note that if a label and category have the same name, we'll always return the category
+		if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
+			foreach ($labelsResponse['content'] as $label) {
+				if ($label['caption'] == $cat_id) {
+					return (intval($label['id']));
+				}
+			}
+		}
+	}
 
 	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
@@ -826,16 +955,20 @@ final class FreshGReaderAPI extends API {
 		$params = [
 			'limit' => $count, //TTRSS Backend limits to 200
 			'skip' => $continuation ? intval($continuation) : 0,
-			'since_id' => $start_time,
+			//'since_id' => $start_time,
 			'include_attachments' => false,
 			'view_mode' => 'unread', // Adjust as needed
 			'feed_id' => -4,
-			'order' => ($order === 'o') ? 'date_reverse' : null,
+			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
 		];
 		if (strpos($streamId, 'feed/') === 0) {
 			$params['feed_id'] = substr($streamId, 5); // Remove 'feed/' prefix
 		} elseif (strpos($streamId, 'user/-/label/') === 0) {
-			$params['cat_id'] = substr($streamId, 13); // Remove 'user/-/label/' prefix
+			$cat_or_label = self::getCategoryLabelID(substr($streamId, 13), $session_id);
+			if ($cat_or_label > -10) {
+				$params['is_cat'] = true;
+			}
+			$params['feed_id'] = $cat_or_label; // Remove 'user/-/label/' prefix
 		} elseif ($streamId === 'user/-/state/com.google/reading-list') {
 			$params['feed_id'] = -4; // All articles in TTRSS
 		} elseif ($streamId === 'user/-/state/com.google/starred') {
@@ -846,6 +979,8 @@ final class FreshGReaderAPI extends API {
 		$allItems = [];
 		$totalItems = 0;
 
+		$k = 0; //if this is set to 200 nnr works, if 0 it doesn't
+
 		do {
 			$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
 			if ($response && isset($response['status']) && $response['status'] == 0) {
@@ -854,37 +989,74 @@ final class FreshGReaderAPI extends API {
 				$allItems = array_merge($allItems, $items);
 				$totalItems += $itemCount;
 				$params['skip'] += $itemCount;
+				$k+=$itemCount;
 			} else {
 				self::internalServerError();
 			}
-		} while ($itemCount == 200);
+		} while ($itemCount == 200 && $k < $count);
 
 		$itemRefs = [];
+
+		$j=0;
+
 		foreach ($allItems as $article) {
-			$itemRefs[] = [
-				'id' => '' . $article['id'], //64-bit decimal
-				'directStreamIds' => ['feed/' . $article['feed_id']],
-				'timestampUsec' => $article['updated'] . '000000',
-			];
+				if ($j < $count) {
+				$itemRefs[] = [
+					'id' => '' . $article['id'], //64-bit decimal
+					//'directStreamIds' => ['feed/' . $article['feed_id']], //Apparently these aren't needed? Will exclude while testing
+					//'timestampUsec' => $article['updated'] . '000000',
+				];
+				$j++;
+			} else {
+				break;
+			}
 		}
 
 		$result = [
 			'itemRefs' => $itemRefs,
 		];
 
-		if ($totalItems >= $count) {
-			$result['continuation'] = $params['skip'];
+		if ($j >= $count) {
+			$result['continuation'] = $continuation ? intval($continuation) + $j : $j;
 		}
-        unset($itemRefs);
+		/*
+		error_log(print_r('itemsize',true));
+		error_log(print_r(sizeof($itemRefs),true));
+		error_log(print_r('firstelement',true));
+		error_log(print_r($itemRefs[0],true));
+		error_log(print_r('lastelement',true));
+		error_log(print_r($result['continuation'],true));
+		*/
+		unset($itemRefs);
         self::triggerGarbageCollection();
-		//error_log(print_r('STREAMITEMIDS', true)); //dbglog
-		//error_log(print_r($result, true)); //dbglog
 		echo json_encode($result, JSON_OPTIONS);
 		exit();
 	}
 
 	private function streamContentsItems(array $e_ids, string $order, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+
+		// Fetch categories
+		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$categoryMap = [];
+		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
+			foreach ($categoriesResponse['content'] as $category) {
+				$categoryMap[$category['id']] = $category['title'];
+			}
+		}
+
+		// Fetch feeds to get the category mapping
+		$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => -4], $session_id);
+		$feedCategoryMap = [];
+		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
+			foreach ($feedsResponse['content'] as $feed) {
+				$feedCategoryMap[$feed['id']] = [
+					'category_id' => $feed['cat_id'],
+					'category_name' => $categoryMap[$feed['cat_id']] ?? 'Uncategorized',
+				];
+			}
+		}
+		//error_log(print_r($feedCategoryMap, true));
 		foreach ($e_ids as $i => $e_id) {
 			// https://feedhq.readthedocs.io/en/latest/api/terminology.html#items
 			if (!ctype_digit($e_id) || $e_id[0] === '0') {
@@ -897,11 +1069,30 @@ final class FreshGReaderAPI extends API {
 			'article_id' => $article_ids_string,
 		], $session_id);
 		$items = [];
+		/*
 		if ($response && isset($response['status']) && $response['status'] == 0 && !empty($response['content'])) {
 			foreach ($response['content'] as $article) {
 				$items[] = self::convertTtrssArticleToGreaderFormat($article);
 			}
 		}
+		*/
+		if ($response && isset($response['status']) && $response['status'] == 0 && !empty($response['content'])) {
+			foreach ($response['content'] as $article) {
+				$graderArticle = self::convertTtrssArticleToGreaderFormat($article);
+				
+				// Add category information
+				if (isset($feedCategoryMap[$article['feed_id']])) {
+					$categoryInfo = $feedCategoryMap[$article['feed_id']];
+					$graderArticle['categories'][] = 'user/-/label/' . $categoryInfo['category_name'];
+					//$graderArticle['origin']['streamId'] = 'feed/' . $article['feed_id'];
+					//$graderArticle['origin']['categoryId'] = $categoryInfo['category_id'];
+					//$graderArticle['origin']['categoryName'] = $categoryInfo['category_name'];
+				}
+				
+				$items[] = $graderArticle;
+			}
+		}
+
 		// Sort items based on the order parameter
 		if ($order === 'o') {  // Ascending order
 			usort($items, function($a, $b) {
@@ -959,7 +1150,7 @@ final class FreshGReaderAPI extends API {
 		// Apply filters
 		if ($filter_target === 'user/-/state/com.google/read') {
 			$params['view_mode'] = 'all_articles';
-		} elseif ($filter_target === 'user/-/state/com.google/unread') {
+		} elseif ($filter_target === 'user/-/state/com.google/reading-list') {
 			$params['view_mode'] = 'unread';
 		}
 
@@ -1015,12 +1206,12 @@ final class FreshGReaderAPI extends API {
 				]
 			],
 			'categories' => [
-				'user/-/state/com.google/' . ($article['unread'] ? 'unread' : 'read'),
-				'user/-/label/' . $article['feed_title'],
+				'user/-/state/com.google/' . ($article['unread'] ? 'reading-list' : 'read'),
+				//'user/-/label/' . $article['feed_title'],
 			],
 			'origin' => [
 				'streamId' => 'feed/' . $article['feed_id'],
-				'htmlUrl' => htmlspecialchars_decode($article['link'], ENT_QUOTES),
+				//'htmlUrl' => htmlspecialchars_decode($article['site_url'], ENT_QUOTES),
 				'title' => $article['feed_title'],
 			],
 			'summary' => [
@@ -1082,38 +1273,36 @@ final class FreshGReaderAPI extends API {
 			$newName = substr($dest, 13);
 			$oldName = htmlspecialchars($oldName, ENT_COMPAT, 'UTF-8');
 			$newName = htmlspecialchars($newName, ENT_COMPAT, 'UTF-8');
-
 			// First, check if it's a category
 			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+			$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
 					if ($category['title'] == $oldName) {
 						// It's a category, so we can rename it
-						$renameResponse = self::callTinyTinyRssApi('editCategory', [
-							'category_id' => $category['id'],
-							'title' => $newName
-						], $session_id);
-						
-						if ($renameResponse && isset($renameResponse['status']) && $renameResponse['status'] == 0) {
+						try {
+							$pdo = Db::pdo();
+							$sth = $pdo->prepare("UPDATE ttrss_feed_categories SET title = ? WHERE id = ? AND owner_uid = ?");
+							$sth->execute([$newName, $category['id'], $_SESSION['uid']]);
 							exit('OK');
+						} catch (PDOException $e) {
+							error_log("Database error when renaming feed: " . $e->getMessage());
 						}
 					}
 				}
-			}
-
-			// If it's not a category, it might be a label
-			$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
+			} 
+			
 			if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 				foreach ($labelsResponse['content'] as $label) {
 					if ($label['caption'] == $oldName) {
 						// It's a label, so we can rename it
-						$renameResponse = self::callTinyTinyRssApi('renameLabel', [
-							'label_id' => $label['id'],
-							'caption' => $newName
-						], $session_id);
-						
-						if ($renameResponse && isset($renameResponse['status']) && $renameResponse['status'] == 0) {
+						try {
+							$pdo = Db::pdo();
+							$sth = $pdo->prepare("UPDATE ttrss_labels2 SET caption = ? WHERE caption = ? AND owner_uid = ?");
+							$sth->execute([$newName, $oldName, $_SESSION['uid']]);
 							exit('OK');
+						} catch (PDOException $e) {
+							error_log("Database error when renaming feed: " . $e->getMessage());
 						}
 					}
 				}
@@ -1137,21 +1326,17 @@ final class FreshGReaderAPI extends API {
 						$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => $category['id']], $session_id);
 						if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
 							foreach ($feedsResponse['content'] as $feed) {
-								self::callTinyTinyRssApi('moveFeed', [
-									'feed_id' => $feed['id'],
-									'category_id' => 0 // Move to uncategorized
-								], $session_id);
+								if (!self::removeCategoryFeed($feed['id'], $_SESSION['uid'], $session_id)) {
+									self::badRequest();
+								}
 							}
 						}
 						
-						// Now delete the category
-						$deleteResponse = self::callTinyTinyRssApi('removeCategory', [
-							'category_id' => $category['id']
-						], $session_id);
-						
-						if ($deleteResponse && isset($deleteResponse['status']) && $deleteResponse['status'] == 0) {
-							exit('OK');
+						// Now delete the category				
+						if (!self::deleteCategory($category['id'], $_SESSION['uid'], $session_id)) {
+							self::badRequest();
 						}
+						exit('OK');
 					}
 				}
 			}
@@ -1161,12 +1346,36 @@ final class FreshGReaderAPI extends API {
 			if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 				foreach ($labelsResponse['content'] as $label) {
 					if ($label['caption'] == $tagName) {
-						// It's a label, so we can delete it
-						$deleteResponse = self::callTinyTinyRssApi('removeLabel', [
-							'label_id' => $label['id']
-						], $session_id);
-						
-						if ($deleteResponse && isset($deleteResponse['status']) && $deleteResponse['status'] == 0) {
+						try {
+							$pdo = Db::pdo();
+							$sth = $pdo->prepare("SELECT id FROM ttrss_labels2 WHERE caption = ? and owner_uid = ?");
+							$sth->execute([$tagName, $_SESSION['uid']]);
+							$deletelabelid = $sth->fetch()[0];
+						} catch (PDOException $e) {
+							error_log("Database error when removing category from feed: " . $e->getMessage());
+							self::badRequest();
+						}
+						if ($deletelabelid == null) {
+							error_log("Label Not Found");
+							self::badRequest();
+						} else {
+							
+							try {
+								$pdo = Db::pdo();
+								$sth = $pdo->prepare("DELETE FROM ttrss_user_labels2 WHERE label_id = ?");
+								$sth->execute([$deletelabelid]);
+							} catch (PDOException $e) {
+								error_log("Database error when removing category from feed: " . $e->getMessage());
+								self::badRequest();
+							}
+							try {
+								$pdo = Db::pdo();
+								$sth = $pdo->prepare("DELETE FROM ttrss_labels2 WHERE id = ? AND owner_uid = ?");
+								$sth->execute([$deletelabelid, $_SESSION['uid']]);
+							} catch (PDOException $e) {
+								error_log("Database error when removing category from feed: " . $e->getMessage());
+								self::badRequest();
+							}
 							exit('OK');
 						}
 					}
@@ -1247,16 +1456,18 @@ final class FreshGReaderAPI extends API {
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
-/*
+		/*
 		error_log(print_r('PATH_INFO=',true));
         error_log(print_r($pathInfo,true));
+		error_log(print_r('REQUEST=',true));
+        error_log(print_r($_REQUEST,true));
 		error_log(print_r('GET=',true));
         error_log(print_r($_GET,true));
 		error_log(print_r('POST=',true));
 		error_log(print_r($_POST,true));
-		error_log(print_r('SESSION=',true));
-		error_log(print_r($_SESSION,true));
-*/
+		//error_log(print_r('SESSION=',true));
+		//error_log(print_r($_SESSION,true));
+		*/
 		$input = $_REQUEST;
 
 		$pathInfo = urldecode($pathInfo);
@@ -1409,32 +1620,36 @@ final class FreshGReaderAPI extends API {
 					if ($output !== 'json') self::notImplemented();
 					self::unreadCount($session_id);
 					// Always exits
+					break; //just in case somethign goes wrong
 				case 'edit-tag':	//http://blog.martindoms.com/2010/01/20/using-the-google-reader-api-part-3/
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
+					$token = isset($input['T']) ? trim($input['T']) : '';
+					self::checkToken($token, $session_id);
 					$a = $input['a'] ?? '';	//Add:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$r = $input['r'] ?? '';	//Remove:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$e_ids = multiplePosts('i');	//item IDs
 					self::editTag($e_ids, $a, $r, $session_id);
 					// Always exits
+					break; //just in case 
 				case 'rename-tag':    //https://github.com/theoldreader/api
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
+					$token = isset($input['T']) ? trim($input['T']) : '';
+					self::checkToken($token, $session_id);
 					$s = $input['s'] ?? '';    //user/-/label/Folder
 					$dest = $input['dest'] ?? '';    //user/-/label/NewFolder
 					self::renameTag($s, $dest, $session_id);
 					// Always exits
+					break; //just in case 
 				case 'disable-tag':    //https://github.com/theoldreader/api
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
+					$token = isset($input['T']) ? trim($input['T']) : '';
+					self::checkToken($token, $session_id);
 					$s_s = multiplePosts('s');
 					foreach ($s_s as $s) {
 						self::disableTag($s, $session_id);    //user/-/label/Folder
 					}
 					// Always exits
+					break; //just in case 
 				case 'mark-all-as-read':
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
+					$token = isset($input['T']) ? trim($input['T']) : '';
+					self::checkToken($token, $session_id);
 					$streamId = trim($input['s'] ?? '');
 					$ts = trim($input['ts'] ?? '0');    //Older than timestamp in nanoseconds
 					if (!ctype_digit($ts)) {
@@ -1442,12 +1657,15 @@ final class FreshGReaderAPI extends API {
 					}
 					self::markAllAsRead($streamId, $ts, $session_id);
 					// Always exits
+					break; //just in case 
 				case 'token':
 					self::token($session_id);
 					// Always exits
+					break; //just in case 
 				case 'user-info':
 					self::userInfo();
 					// Always exits
+					break; //just in case 
 			}
 		}
 		self::triggerGarbageCollection();

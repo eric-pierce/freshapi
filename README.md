@@ -20,6 +20,8 @@ Many mobile applications support one of these protocols, many do not. FreshAPI i
 | Add a Category to a Feed | :x: | :x: | :white_check_mark: | |
 | Remove a Category from a Feed | :x: | :x: | :white_check_mark: | |
 | Create a new Category | :x: | :x: | :white_check_mark: | |
+| Rename a Label | :x: | :x: | :white_check_mark: | |
+| Delete a Label | :x: | :x: | :white_check_mark: | |
 | OPML Export | :x: | :x: | :white_check_mark: | |
 | OPML Import | :x: | :x: | :white_check_mark: | |
 | Trigger Individual Feed Update | :x: | :white_check_mark: | :x: | This feature not supported by the Google Reader API |
@@ -51,12 +53,13 @@ The following clients have been or will be tested. For any reports of additional
 
 | App | Platform | Status | Notes |
 | :---: | :---: | :---: | :---: |
-| Reeder | iOS, macOS | Fully Functional | None |
-| NetNewsWire | iOS | Fully Functional | None |
-| Fiery Feeds | iOS | Fully Functional | None |
-| ReadKit | iOS | Fully Functional | None |
-| Fluent Reader | iOS | Not Functional | Investigation Needed |
-| FeedMe | Android | Not Tested | Testing Planned |
+| [Reeder Classic](https://reederapp.com/classic/) | iOS, macOS | Fully Functional | None |
+| [NetNewsWire](https://netnewswire.com/) | iOS | Fully Functional | Currently working when there are < 800 unread entries, investingating cause |
+| [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS | Fully Functional | None |
+| [ReadKit](https://readkit.app/) | iOS | Fully Functional | None |
+| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Partially Functional | Investigation Needed |
+| [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
+| [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
 
 ## Using the API
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
