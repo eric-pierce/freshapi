@@ -54,7 +54,7 @@ The following clients have been or will be tested. For any reports of additional
 | App | Platform | Status | Notes |
 | :---: | :---: | :---: | :---: |
 | [Reeder Classic](https://reederapp.com/classic/) | iOS, macOS | Fully Functional | None |
-| [NetNewsWire](https://netnewswire.com/) | iOS | Fully Functional | Currently working when there are < 800 unread entries, investingating cause |
+| [NetNewsWire](https://netnewswire.com/) | iOS, macOS | Fully Functional | None |
 | [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS | Fully Functional | None |
 | [ReadKit](https://readkit.app/) | iOS | Fully Functional | None |
 | [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Partially Functional | Investigation Needed |
