@@ -845,7 +845,6 @@ final class FreshGReaderAPI extends API {
 
 	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-
 		$params = [
 			'limit' => $count, // Max articles to send to client
 			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
@@ -855,7 +854,11 @@ final class FreshGReaderAPI extends API {
 			'feed_id' => -4, //setting to all articles by default
 			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
 		];
-	
+		
+		$readonly = false;
+		if ($exclude_target == 'user/-/state/com.google/unread') {
+			$readonly = true;
+		}
 		// Set feed_id based on streamId
 		if (strpos($streamId, 'feed/') === 0) {
 			$params['feed_id'] = substr($streamId, 5);
@@ -865,9 +868,11 @@ final class FreshGReaderAPI extends API {
 				$params['is_cat'] = true;
 			}
 			$params['feed_id'] = $cat_or_label; // Remove 'user/-/label/' prefix
-		} elseif ($streamId === 'user/-/state/com.google/reading-list') {
+		} elseif ($streamId == 'user/-/state/com.google/read') {
+			$readonly = true;
+		} elseif ($streamId == 'user/-/state/com.google/reading-list') {
 			$params['feed_id'] = -4;
-		} elseif ($streamId === 'user/-/state/com.google/starred') {
+		} elseif ($streamId == 'user/-/state/com.google/starred') {
 			$params['feed_id'] = -1;
 			$params['view_mode'] = 'marked';
 		}
@@ -878,7 +883,7 @@ final class FreshGReaderAPI extends API {
 		$min_date = isset($start_time) ? intval($start_time) : 0;
 		while (($totalFetched < $count) && ($totalFetched <= 15000)) { //setting max cap just in case
 			$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
-			
+
 			if (!($response && isset($response['status']) && $response['status'] == 0)) {
 				self::internalServerError();
 			}
@@ -887,6 +892,9 @@ final class FreshGReaderAPI extends API {
 			$itemCount = count($items);
 			
 			foreach ($items as $article) {
+				if ($readonly && ($article['unread'] == 1)) {
+					continue;
+				}
 				if ($totalFetched < $count) {
 					if (intval($article['updated']) > $min_date) {
 						$itemRefs[] = [
@@ -918,6 +926,7 @@ final class FreshGReaderAPI extends API {
 			// There are more items available
 			$result['continuation'] = '' . ($continuation ? intval($continuation) : 0) + $totalFetched;
 		}
+		//error_log(print_r(sizeof($itemRefs), true));
 		unset($itemRefs);
 		
 		self::triggerGarbageCollection();
@@ -1100,7 +1109,7 @@ final class FreshGReaderAPI extends API {
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
 			'timestampUsec' => $article['updated'] . '000000', //'' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
 			'published' => $article['updated'],
-			'title' => escapeToUnicodeAlternative($article['title'],false),
+			'title' => array_key_exists('title', $article) ? escapeToUnicodeAlternative($article['title'], false) : '',
 			//'updated' => date(DATE_ATOM, $article['updated']),
 			'canonical' => [
 				['href' => htmlspecialchars_decode($article['link'], ENT_QUOTES)]
@@ -1116,7 +1125,7 @@ final class FreshGReaderAPI extends API {
 			],
 			'origin' => [
 				'streamId' => 'feed/' . $article['feed_id'],
-				'title' => escapeToUnicodeAlternative($article['feed_title'], true),
+				'title' => array_key_exists('feed_title', $article) ? escapeToUnicodeAlternative($article['feed_title'], false) : '',
 			],
 			'summary' => [
 				//'content' => $article['content'],
