@@ -1596,11 +1596,6 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case 
 				case 'rename-tag':    //https://github.com/theoldreader/api
-					if (isset($input['T'])) {
-						$token = isset($input['T']) ? trim($input['T']) : '';
-					} else {
-						self::token($session_id);
-					}
 					//$token = isset($input['T']) ? trim($input['T']) : '';
 					//self::checkToken($token, $session_id);
 					$s = $input['s'] ?? '';    //user/-/label/Folder
