@@ -271,8 +271,6 @@ final class FreshGReaderAPI extends API {
 		$response = "SID={$auth}\n";
 		$response .= "LSID=\n";
 		$response .= "Auth={$auth}\n";
-		error_log(print_r($session_id, true));
-		error_log(print_r($_SESSION, true));
 		header('Content-Type: text/plain; charset=UTF-8');
 		echo $response;
 		exit();
@@ -1598,11 +1596,7 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case 
 				case 'rename-tag':    //https://github.com/theoldreader/api
-					error_log(print_r($_GET, true));
-					error_log(print_r($_POST, true));
-					error_log(print_r($_SESSION, true));
-					error_log(print_r($_SERVER, true));
-					if (isseet($input['T'])) {
+					if (isset($input['T'])) {
 						$token = isset($input['T']) ? trim($input['T']) : '';
 					} else {
 						self::token($session_id);
