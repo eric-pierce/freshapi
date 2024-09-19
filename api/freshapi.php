@@ -250,30 +250,32 @@ final class FreshGReaderAPI extends API {
 				}
 			}
 		}
-		self::unauthorized();
+		return '';
 	}
 
 	private function clientLogin(string $email, string $password) {
-		$loginResponse = self::callTinyTinyRssApi('login', [
-			'user' => $email,
-			'password' => $password
-		]);
-		
-		if ($loginResponse && isset($loginResponse['status']) && $loginResponse['status'] == 0) {
-			$session_id = $loginResponse['content']['session_id'];
-
-			// Format the response as expected by Google Reader API clients
-			$auth = $email . '/' . $session_id;
-			$response = "SID={$auth}\n";
-			$response .= "LSID=\n";
-			$response .= "Auth={$auth}\n";
-			
-			header('Content-Type: text/plain; charset=UTF-8');
-			echo $response;
-			exit();
-		} else {
-			self::unauthorized();
+		$session_id = self::authorizationToUser();
+		if ($session_id == '') {
+			$loginResponse = self::callTinyTinyRssApi('login', [
+				'user' => $email,
+				'password' => $password
+			]);
+			if ($loginResponse && isset($loginResponse['status']) && $loginResponse['status'] == 0) {
+				$session_id = $loginResponse['content']['session_id'];
+			} else {
+				self::unauthorized();
+			}			
 		}
+		// Format the response as expected by Google Reader API clients
+		$auth = $email . '/' . $session_id;
+		$response = "SID={$auth}\n";
+		$response .= "LSID=\n";
+		$response .= "Auth={$auth}\n";
+		error_log(print_r($session_id, true));
+		error_log(print_r($_SESSION, true));
+		header('Content-Type: text/plain; charset=UTF-8');
+		echo $response;
+		exit();
 	}
 
 	/** @return never */
@@ -890,7 +892,7 @@ final class FreshGReaderAPI extends API {
 	
 			$items = $response['content'];
 			$itemCount = count($items);
-			
+
 			foreach ($items as $article) {
 				if ($readonly && ($article['unread'] == 1)) {
 					continue;
@@ -1410,15 +1412,18 @@ final class FreshGReaderAPI extends API {
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
-		/*
+		
 		error_log(print_r('1-PATH_INFO=',true));
         error_log(print_r($pathInfo,true));
 		error_log(print_r('2-REQUEST=',true));
         error_log(print_r($_REQUEST,true));
 		error_log(print_r('3-ORIGINAL_INPUT',true));
 		error_log(print_r($ORIGINAL_INPUT,true));
+		error_log(print_r(headerVariable('Authorization', 'GoogleLogin_auth'),true));
+		error_log(print_r($_SESSION,true));
+
 		//error_log(print_r(substr($_SERVER['HTTP_USER_AGENT'], 0, 11),true));
-		
+		/*\
 		error_log(print_r('GET=',true));
         error_log(print_r($_GET,true));
 		error_log(print_r('POST=',true));
@@ -1447,6 +1452,9 @@ final class FreshGReaderAPI extends API {
 			}
 		} elseif (isset($pathInfos[3], $pathInfos[4]) && $pathInfos[1] === 'reader' && $pathInfos[2] === 'api' && $pathInfos[3] === '0') {
 			$session_id = self::authorizationToUser();
+			if ($session_id == '') {
+				self::unauthorized();
+			}
 			$timestamp = isset($input['ck']) ? (int)$input['ck'] : 0;	//ck=[unix timestamp] : Use the current Unix time here, helps Google with caching.
 			switch ($pathInfos[4]) {
 				case 'stream':
@@ -1583,8 +1591,8 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case somethign goes wrong
 				case 'edit-tag':	//http://blog.martindoms.com/2010/01/20/using-the-google-reader-api-part-3/
-					$token = isset($input['T']) ? trim($input['T']) : '';
-					self::checkToken($token, $session_id);
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
 					$a = $input['a'] ?? '';	//Add:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$r = $input['r'] ?? '';	//Remove:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$e_ids = multiplePosts('i');	//item IDs
@@ -1592,16 +1600,25 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case 
 				case 'rename-tag':    //https://github.com/theoldreader/api
-					$token = isset($input['T']) ? trim($input['T']) : '';
-					self::checkToken($token, $session_id);
+					error_log(print_r($_GET, true));
+					error_log(print_r($_POST, true));
+					error_log(print_r($_SESSION, true));
+					error_log(print_r($_SERVER, true));
+					if (isseet($input['T'])) {
+						$token = isset($input['T']) ? trim($input['T']) : '';
+					} else {
+						self::token($session_id);
+					}
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
 					$s = $input['s'] ?? '';    //user/-/label/Folder
 					$dest = $input['dest'] ?? '';    //user/-/label/NewFolder
 					self::renameTag($s, $dest, $session_id);
 					// Always exits
 					break; //just in case 
 				case 'disable-tag':    //https://github.com/theoldreader/api
-					$token = isset($input['T']) ? trim($input['T']) : '';
-					self::checkToken($token, $session_id);
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
 					$s_s = multiplePosts('s');
 					foreach ($s_s as $s) {
 						self::disableTag($s, $session_id);    //user/-/label/Folder
@@ -1609,8 +1626,8 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case 
 				case 'mark-all-as-read':
-					$token = isset($input['T']) ? trim($input['T']) : '';
-					self::checkToken($token, $session_id);
+					//$token = isset($input['T']) ? trim($input['T']) : '';
+					//self::checkToken($token, $session_id);
 					$streamId = trim($input['s'] ?? '');
 					$ts = trim($input['ts'] ?? '0');    //Older than timestamp in nanoseconds
 					if (!ctype_digit($ts)) {
