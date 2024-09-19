@@ -959,8 +959,8 @@ final class FreshGReaderAPI extends API {
 
 	private function streamContentsItems(array $e_ids, string $order, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		
 		// Fetch categories
-
 		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		$categoryMap = [];
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
@@ -993,20 +993,19 @@ final class FreshGReaderAPI extends API {
 		], $session_id);
 		$items = [];
 		if ($response && isset($response['status']) && $response['status'] == 0 && !empty($response['content'])) {
-			foreach ($response['content'] as $article) {
-				$graderArticle = self::convertTtrssArticleToGreaderFormat($article);
-				
+			foreach ($response['content'] as $article) {				
 				// Add category information
 				if (isset($feedCategoryMap[$article['feed_id']])) {
 					$categoryInfo = $feedCategoryMap[$article['feed_id']];
-					$graderArticle['categories'][] = 'user/-/label/' . $categoryInfo['category_name'];
-					//$graderArticle['origin']['streamId'] = 'feed/' . $article['feed_id'];
-					//$graderArticle['origin']['categoryId'] = $categoryInfo['category_id'];
-					//$graderArticle['origin']['categoryName'] = $categoryInfo['category_name'];
+					if (empty($article['feed_title'])) {
+						$article['feed_title'] = $categoryInfo['category_name'];
+					}
+					$greaderArticle = self::convertTtrssArticleToGreaderFormat($article);
+					$greaderArticle['categories'][] = 'user/-/label/' . $categoryInfo['category_name'];
+				} else {
+					$greaderArticle = self::convertTtrssArticleToGreaderFormat($article);
 				}
-
-
-				$items[] = $graderArticle;
+				$items[] = $greaderArticle;
 			}
 		}
 
@@ -1111,7 +1110,7 @@ final class FreshGReaderAPI extends API {
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
 			'timestampUsec' => $article['updated'] . '000000', //'' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
 			'published' => $article['updated'],
-			'title' => array_key_exists('title', $article) ? escapeToUnicodeAlternative($article['title'], false) : '',
+			'title' => (array_key_exists('title', $article) && !empty($article['title'])) ? escapeToUnicodeAlternative($article['title'], false) : '',
 			//'updated' => date(DATE_ATOM, $article['updated']),
 			'canonical' => [
 				['href' => htmlspecialchars_decode($article['link'], ENT_QUOTES)]
@@ -1127,7 +1126,7 @@ final class FreshGReaderAPI extends API {
 			],
 			'origin' => [
 				'streamId' => 'feed/' . $article['feed_id'],
-				'title' => array_key_exists('feed_title', $article) ? escapeToUnicodeAlternative($article['feed_title'], false) : '',
+				'title' => (array_key_exists('feed_title', $article) && !empty($article['feed_title'])) ? escapeToUnicodeAlternative($article['feed_title'], false) : '',
 			],
 			'summary' => [
 				//'content' => $article['content'],
@@ -1412,18 +1411,17 @@ final class FreshGReaderAPI extends API {
 		} else {
 			$pathInfo = $_SERVER['PATH_INFO'];
 		}
-		
+		/*
 		error_log(print_r('1-PATH_INFO=',true));
         error_log(print_r($pathInfo,true));
 		error_log(print_r('2-REQUEST=',true));
         error_log(print_r($_REQUEST,true));
-		error_log(print_r('3-ORIGINAL_INPUT',true));
-		error_log(print_r($ORIGINAL_INPUT,true));
+		//error_log(print_r('3-ORIGINAL_INPUT',true));
+		//error_log(print_r($ORIGINAL_INPUT,true));
 		error_log(print_r(headerVariable('Authorization', 'GoogleLogin_auth'),true));
 		error_log(print_r($_SESSION,true));
 
 		//error_log(print_r(substr($_SERVER['HTTP_USER_AGENT'], 0, 11),true));
-		/*\
 		error_log(print_r('GET=',true));
         error_log(print_r($_GET,true));
 		error_log(print_r('POST=',true));
