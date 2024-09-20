@@ -8,23 +8,23 @@ Tiny-Tiny RSS is one of the best and most customizable self-hostable RSS readers
 
 Many mobile applications support one of these protocols, many do not. FreshAPI implements the FreshRSS / Google Reader API to allow Tiny-Tiny RSS to be used with more third party apps, and with more features.
 
-| Feature  | Fever API | Official API | FreshAPI | FreshAPI Comments |
-| :---: | :---: | :---: | :---: | :---: |
-| Mark Article as Read/Unread | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
-| Add/Remove Star from Article | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
-| Mark Entire Feed/Category as Read | :white_check_mark: | :white_check_mark: | :white_check_mark: | |
-| Secure Implementation | :x: | :white_check_mark: | :white_check_mark: | |
-| Subscribe to a Feed | :x: | :white_check_mark: | :white_check_mark: | |
-| Unsubscribe from a Feed | :x: | :white_check_mark: | :white_check_mark: | |
-| Rename a Feed | :x: | :x: | :white_check_mark: | |
-| Add a Category to a Feed | :x: | :x: | :white_check_mark: | |
-| Remove a Category from a Feed | :x: | :x: | :white_check_mark: | |
-| Create a new Category | :x: | :x: | :white_check_mark: | |
-| Rename a Label | :x: | :x: | :white_check_mark: | |
-| Delete a Label | :x: | :x: | :white_check_mark: | |
-| OPML Export | :x: | :x: | :white_check_mark: | |
-| OPML Import | :x: | :x: | :white_check_mark: | |
-| Trigger Individual Feed Update | :x: | :white_check_mark: | :x: | This feature not supported by the Google Reader API |
+| Feature  | Fever API | Official API | FreshAPI |
+| :---: | :---: | :---: | :---: |
+| Mark Article as Read/Unread | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Add/Remove Star from Article | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Mark Entire Feed/Category as Read | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| Secure Implementation | :x: | :white_check_mark: | :white_check_mark: |
+| Subscribe to a Feed | :x: | :white_check_mark: | :white_check_mark: |
+| Unsubscribe from a Feed | :x: | :white_check_mark: | :white_check_mark: |
+| Rename a Feed | :x: | :x: | :white_check_mark: |
+| Add a Category to a Feed | :x: | :x: | :white_check_mark: |
+| Remove a Category from a Feed | :x: | :x: | :white_check_mark: |
+| Create a new Category | :x: | :x: | :white_check_mark: |
+| Rename a Label | :x: | :x: | :white_check_mark: |
+| Delete a Label | :x: | :x: | :white_check_mark: |
+| OPML Export | :x: | :x: | :white_check_mark: |
+| OPML Import | :x: | :x: | :white_check_mark: |
+| Trigger Individual Feed Update | :x: | :white_check_mark: | :x: |
 
 ## Requirements
 
@@ -57,9 +57,9 @@ The following clients have been or will be tested. For any reports of additional
 | [NetNewsWire](https://netnewswire.com/) | iOS, macOS | Fully Functional | None |
 | [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS | Fully Functional | None |
 | [ReadKit](https://readkit.app/) | iOS | Fully Functional | None |
-| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Partially Functional | Investigation Needed |
 | [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
 | [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
+| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Partially Functional | Only Pulls down ~200 articles. Investigation needed. |
 
 ## Using the API
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:

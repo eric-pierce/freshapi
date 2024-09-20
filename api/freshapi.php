@@ -843,7 +843,7 @@ final class FreshGReaderAPI extends API {
 		return [$type, $feed_id, $is_cat, $view_mode, trim($search)];
 	}
 
-	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
+	private function streamContentsItemsIds1($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
 		$params = [
 			'limit' => $count, // Max articles to send to client
@@ -929,6 +929,126 @@ final class FreshGReaderAPI extends API {
 		//error_log(print_r(sizeof($itemRefs), true));
 		unset($itemRefs);
 		
+		self::triggerGarbageCollection();
+		echo json_encode($result, JSON_OPTIONS), "\n";
+		exit();
+	}
+
+	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
+		header('Content-Type: application/json; charset=UTF-8');
+		$params = [
+			'limit' => $count, // Max articles to send to client
+			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
+			//'since_id' => $start_time,
+			'include_attachments' => false,
+			'view_mode' => ($exclude_target == 'user/-/state/com.google/read') ? 'unread' : 'all_articles',
+			'feed_id' => -4, //setting to all articles by default
+			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
+		];
+		
+		$readonly = false;
+		if ($exclude_target == 'user/-/state/com.google/unread') {
+			$readonly = true;
+		}
+		// Set feed_id based on streamId
+		if (strpos($streamId, 'feed/') === 0) {
+			$params['feed_id'] = substr($streamId, 5);
+		} elseif (strpos($streamId, 'user/-/label/') === 0) {
+			$cat_or_label = self::getCategoryLabelID(substr($streamId, 13), $session_id);
+			if ($cat_or_label > -10) { // below -10 are Labels, above are categories
+				$params['is_cat'] = true;
+			}
+			$params['feed_id'] = $cat_or_label; // Remove 'user/-/label/' prefix
+		} elseif ($streamId == 'user/-/state/com.google/read') {
+			$readonly = true;
+		} elseif ($streamId == 'user/-/state/com.google/reading-list') {
+			$params['feed_id'] = -4;
+		} elseif ($streamId == 'user/-/state/com.google/starred') {
+			$params['feed_id'] = -1;
+			$params['view_mode'] = 'marked';
+		}
+		$itemRefs = [];
+		$totalFetched = 0;
+		$moreAvailable = false;
+		$min_date = isset($start_time) ? intval($start_time) : 0;
+		$offset = $continuation ? intval($continuation) : 0;
+		
+		if ($readonly) {
+			try {
+				$pdo = Db::pdo();
+				if ($order == 'o') {
+					$sth = $pdo->prepare("SELECT ref_id::varchar as id FROM public.ttrss_user_entries where owner_uid = ? and unread <> true and extract(epoch from last_read) >= ? order by last_read ASC OFFSET ? LIMIT ?");
+				} else {
+					$sth = $pdo->prepare("SELECT ref_id::varchar as id FROM public.ttrss_user_entries where owner_uid = ? and unread <> true and extract(epoch from last_read) >= ? order by last_read DESC OFFSET ? LIMIT ?");
+				}
+				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
+				$items = $sth->fetchAll(PDO::FETCH_ASSOC);
+			} catch (PDOException $e) {
+				error_log("Database error when pulling read items: " . $e->getMessage());
+				self::badRequest();
+			}
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("SELECT count(*) FROM public.ttrss_user_entries where owner_uid = ? and unread <> true and extract(epoch from last_read) >= ?");
+				$sth->execute([$_SESSION['uid'], $min_date]);
+				$itemsleft = $sth->fetch()[0];
+			} catch (PDOException $e) {
+				error_log("Database error when pulling items left: " . $e->getMessage());
+				self::badRequest();
+			}
+			$itemCount = count($items);
+			$totalFetched = count($items);
+			$itemRefs = $items;
+			if ($itemsleft - $count - $offset > $itemCount) {
+				$moreAvailable = true;
+			}
+		} else {
+			while (($totalFetched < $count) && ($totalFetched <= 15000)) { //setting max cap just in case
+				$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
+	
+				if (!($response && isset($response['status']) && $response['status'] == 0)) {
+					self::internalServerError();
+				}
+		
+				$items = $response['content'];
+				$itemCount = count($items);
+	
+				foreach ($items as $article) {
+					if ($readonly && ($article['unread'] == 1)) {
+						continue;
+					}
+					if ($totalFetched < $count) {
+						if (intval($article['updated']) > $min_date) {
+							$itemRefs[] = [
+								'id' => '' . $article['id'],
+							];
+							$totalFetched++;
+						}
+					} else {
+						$moreAvailable = true;
+						break;
+					}
+				}
+		
+				if ($itemCount < 200) {
+					// We've reached the end of available items
+					break;
+				}
+				$params['skip'] += $itemCount;
+			}
+		}
+
+		$result = [
+			'itemRefs' => $itemRefs,
+		];
+	
+		if ($moreAvailable || ($totalFetched == $count)) {
+			// There are more items available
+			$result['continuation'] = '' . ($continuation ? intval($continuation) : 0) + $totalFetched;
+		}
+		unset($itemRefs);
+		unset($items);
+		unset($response);
 		self::triggerGarbageCollection();
 		echo json_encode($result, JSON_OPTIONS), "\n";
 		exit();
@@ -1418,7 +1538,7 @@ final class FreshGReaderAPI extends API {
 		//error_log(print_r($ORIGINAL_INPUT,true));
 		error_log(print_r(headerVariable('Authorization', 'GoogleLogin_auth'),true));
 		error_log(print_r($_SESSION,true));
-
+		
 		//error_log(print_r(substr($_SERVER['HTTP_USER_AGENT'], 0, 11),true));
 		error_log(print_r('GET=',true));
         error_log(print_r($_GET,true));

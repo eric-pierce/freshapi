@@ -3,7 +3,7 @@
 /**
 == Description ==
 Server-side API for the Tiny Tiny RSS project https://tt-rss.org compatible with FreshRSS and Google Reader API Specs
-This plugin will use a rolling release approach, with notable changes mentioned in the Versioning section below
+This plugin will use a rolling release approach, with notable changes mentioned in the section below
 
 == Credits ==
 * Project by Eric Pierce https://eric-pierce.com
@@ -11,9 +11,10 @@ This plugin will use a rolling release approach, with notable changes mentioned 
     https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php
 	Released under GNU AGPL 3 license http://www.gnu.org/licenses/agpl-3.0.html
 
-== Versioning ==
+== Notable Changes ==
     * 2024-09-13: Initial Release by Eric Pierce
-	* 2024-09-18: Resolved several issus related to labels and syncing for NetNewsWire
+    * 2024-09-18: Resolved several issus related to labels and syncing for NetNewsWire
+	* 2024-09-19: Updated authentication logic to support more clients like Fiery Feeds
 */
 
 class FreshAPI extends Plugin {
@@ -25,7 +26,7 @@ class FreshAPI extends Plugin {
 			"A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS",
 			"Eric Pierce",
 			false,
-			"https://github.com/eric-pierce/FreshAPI");
+			"https://github.com/eric-pierce/freshapi");
 	}
 
     function api_version() {
