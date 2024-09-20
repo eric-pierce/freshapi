@@ -1014,9 +1014,6 @@ final class FreshGReaderAPI extends API {
 				$itemCount = count($items);
 	
 				foreach ($items as $article) {
-					if ($readonly && ($article['unread'] == 1)) {
-						continue;
-					}
 					if ($totalFetched < $count) {
 						if (intval($article['updated']) > $min_date) {
 							$itemRefs[] = [
