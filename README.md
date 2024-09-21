@@ -45,7 +45,11 @@ If you are using another installation method please provide details about your s
 3. In Preferences, open the Plugin menu and enable "freshapi"
    <img src="https://github.com/user-attachments/assets/68260e5f-bcb8-4e14-a416-3d31104d9006" width="800" />
   
-4. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and use https://example.com/tt-rss/plugins.local/freshapi/api/greader.php as the server name. Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
+4. When configuring your mobile app, select either "FreshRSS" or "Google Reader API", and if you're using the standard docker installation use ```https://example.com/tt-rss/plugins.local/freshapi/api/greader.php``` as the server name. 
+
+   If you're running the TT-RSS app at the website root (not including /tt-rss/ in the URL) by using the APP_WEB_ROOT and APP_BASE environment variables as described [here](https://tt-rss.org/wiki/InstallationNotes/#how-do-i-make-it-run-without-tt-rss-in-the-url-ie-at-website-root) you'll also need to remove tt-rss from the domain you use with clients: ```https://example.com/plugins.local/freshapi/api/greader.php```
+
+   Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Compatible Clients
 
@@ -77,7 +81,8 @@ LSID=
 Auth=yourusername/r4ih6gt412opqh11gptp3hodd6
 ```
 
-2. Make Desired API Call
+
+2. Calling the API Directly
 
 Take the username/session_id combination from step 1 and make a new cURL call to the endpoint you'd like to use. In this case we'll ask to export the subscription, folder, and tag OPML through the subscription export feature:
 
