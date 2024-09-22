@@ -212,8 +212,12 @@ final class FreshGReaderAPI extends API {
         $_REQUEST = null;
         $_REQUEST = $params;
 
-        ob_start();
-
+		if (defined('ENABLE_GZIP_OUTPUT') && ENABLE_GZIP_OUTPUT && function_exists("ob_gzhandler")) {
+			ob_start("ob_gzhandler");
+		} else {
+			ob_start();
+		}
+		
 		if ($operation && method_exists($this, $operation)) {
 			$result = parent::$operation($_REQUEST);
 		} else  { //if (method_exists($handler, 'index'))
@@ -272,6 +276,7 @@ final class FreshGReaderAPI extends API {
 		$response .= "LSID=\n";
 		$response .= "Auth={$auth}\n";
 		header('Content-Type: text/plain; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
 		echo $response;
 		exit();
 	}
@@ -340,6 +345,7 @@ final class FreshGReaderAPI extends API {
 	/** @return never */
 	private function tagList($session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
 
 		$tags = [
 			['id' => 'user/-/state/com.google/starred'],
@@ -394,7 +400,11 @@ final class FreshGReaderAPI extends API {
 		$tmp_file = $ttrss_root . '/' . Config::get(Config::CACHE_DIR) . '/upload/' . $_SESSION['name'] . '_opml_import.opml';
 		file_put_contents($tmp_file, $opml);
 		$upl_opml = new OPML($_REQUEST);
-        ob_start();
+		if (defined('ENABLE_GZIP_OUTPUT') && ENABLE_GZIP_OUTPUT && function_exists("ob_gzhandler")) {
+			ob_start("ob_gzhandler");
+		} else {
+			ob_start();
+		}
 		$opml_imp = $upl_opml->opml_import($_SESSION["uid"], $tmp_file);
 		$capturedOutput = ob_get_clean();
 		ob_end_flush();
@@ -421,6 +431,7 @@ final class FreshGReaderAPI extends API {
 	/** @return never */
 	private function subscriptionList($session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
 
 		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => -4], $session_id);
@@ -459,6 +470,8 @@ final class FreshGReaderAPI extends API {
 	/** @return never */
 	private function renameFeed($feed_id, $title, $uid, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
+
 		if (!self::isSessionActive($session_id)) {
 			exit();
 		}
@@ -698,7 +711,8 @@ final class FreshGReaderAPI extends API {
 
 	private function unreadCount(string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-	    
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
+
 		// Fetch categories
 		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 		if (!($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0)) {
@@ -845,6 +859,8 @@ final class FreshGReaderAPI extends API {
 
 	private function streamContentsItemsIds1($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
+
 		$params = [
 			'limit' => $count, // Max articles to send to client
 			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
@@ -936,6 +952,8 @@ final class FreshGReaderAPI extends API {
 
 	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
+
 		$params = [
 			'limit' => $count, // Max articles to send to client
 			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
@@ -1074,6 +1092,7 @@ final class FreshGReaderAPI extends API {
 
 	private function streamContentsItems(array $e_ids, string $order, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
 		
 		// Fetch categories
 		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
@@ -1146,7 +1165,8 @@ final class FreshGReaderAPI extends API {
 	private function streamContents(string $path, string $include_target, int $start_time, int $stop_time, int $count,
     string $order, string $filter_target, string $exclude_target, string $continuation, string $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-			
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
+
 		list($type, $feed_id, $is_cat, $view_mode, $search) = self::streamContentsFilters($path, $include_target, $filter_target, $exclude_target, $start_time, $stop_time, $session_id);
 
 		$params = [
@@ -1514,6 +1534,7 @@ final class FreshGReaderAPI extends API {
 		header('Access-Control-Allow-Methods: GET, POST');
 		header('Access-Control-Allow-Origin: *');
 		header('Access-Control-Max-Age: 600');
+		header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
 		if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
 			self::noContent();
 		}
