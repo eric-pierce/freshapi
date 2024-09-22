@@ -212,11 +212,7 @@ final class FreshGReaderAPI extends API {
         $_REQUEST = null;
         $_REQUEST = $params;
 
-		if (defined('ENABLE_GZIP_OUTPUT') && ENABLE_GZIP_OUTPUT && function_exists("ob_gzhandler")) {
-			ob_start("ob_gzhandler");
-		} else {
-			ob_start();
-		}
+		ob_start();
 		
 		if ($operation && method_exists($this, $operation)) {
 			$result = parent::$operation($_REQUEST);
@@ -400,11 +396,9 @@ final class FreshGReaderAPI extends API {
 		$tmp_file = $ttrss_root . '/' . Config::get(Config::CACHE_DIR) . '/upload/' . $_SESSION['name'] . '_opml_import.opml';
 		file_put_contents($tmp_file, $opml);
 		$upl_opml = new OPML($_REQUEST);
-		if (defined('ENABLE_GZIP_OUTPUT') && ENABLE_GZIP_OUTPUT && function_exists("ob_gzhandler")) {
-			ob_start("ob_gzhandler");
-		} else {
-			ob_start();
-		}
+		
+		ob_start();
+
 		$opml_imp = $upl_opml->opml_import($_SESSION["uid"], $tmp_file);
 		$capturedOutput = ob_get_clean();
 		ob_end_flush();
