@@ -14,7 +14,8 @@ This plugin will use a rolling release approach, with notable changes mentioned 
 == Notable Changes ==
     * 2024-09-13: Initial Release by Eric Pierce
     * 2024-09-18: Resolved several issus related to labels and syncing for NetNewsWire
-	* 2024-09-19: Updated authentication logic to support more clients like Fiery Feeds
+    * 2024-09-19: Updated authentication logic to support more clients like Fiery Feeds
+    * 2024-09-23: Significant speed improvements when syncing
 */
 
 class FreshAPI extends Plugin {
@@ -22,7 +23,7 @@ class FreshAPI extends Plugin {
 	private $host;
 
 	function about() {
-		return array(1.1,
+		return array(1.2,
 			"A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS",
 			"Eric Pierce",
 			false,
