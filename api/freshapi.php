@@ -442,6 +442,16 @@ final class FreshGReaderAPI extends API {
 		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
 			foreach ($feedsResponse['content'] as $feed) {
 				if ($feed['id'] > 0) { //Removing "Special" and "Label" cat lists
+					$site_url = '';
+					try {
+						$pdo = Db::pdo();
+						$sth = $pdo->prepare("SELECT site_url FROM ttrss_feeds WHERE id = ? and owner_uid = ?");
+						$sth->execute([$feed['id'], $_SESSION['uid']]);
+						$site_url = $sth->fetch()[0];
+					} catch (PDOException $e) {
+						error_log("Database error when pulling feed url: " . $e->getMessage());
+						return false;
+					}
 					$subscriptions[] = [
 						'id' => 'feed/' . $feed['id'],
 						'title' => $feed['title'],
@@ -452,7 +462,7 @@ final class FreshGReaderAPI extends API {
 							]
 						],
 						'url' => isset($feed['feed_url']) ? $feed['feed_url'] : '',
-						'htmlUrl' => isset($feed['feed_url']) ? $feed['feed_url'] : '', //site_url is not in the categories TTRSS API call
+						'htmlUrl' => !empty($site_url) ? $site_url : '',
 						'iconUrl' => TTRSS_SELF_URL_PATH . '/public.php?op=feed_icon&id=' . $feed['id'] . '.ico' //TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
 					];
 				}
