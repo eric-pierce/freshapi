@@ -54,17 +54,18 @@ If you are using another installation method please provide details about your s
 
 ## Compatible Clients
 
-The following clients have been or will be tested. For any reports of additional client funcationality please open an issue with your experiences.
+The following clients have been tested, but FreshAPI should be compatible with any FreshRSS or Google Reader API compatible client. If you run into any issues or would like to report a client as working, please [open up an issue](https://github.com/eric-pierce/freshapi/issues/new/choose).
 
 | App | Platform | Status | Notes |
 | :---: | :---: | :---: | :---: |
 | [Reeder Classic](https://reederapp.com/classic/) | iOS, macOS | Fully Functional | None |
 | [NetNewsWire](https://netnewswire.com/) | iOS, macOS | Fully Functional | None |
-| [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS | Fully Functional | None |
-| [ReadKit](https://readkit.app/) | iOS | Fully Functional | None |
+| [lire](https://lireapp.com/) | iOS, macOS | Fully Functional | None |
+| [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS, macOS | Fully Functional | None |
+| [ReadKit](https://readkit.app/) | iOS, macOS | Fully Functional | None |
+| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS, macOS | Fully Functional | None |
 | [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
 | [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
-| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Fully Functional | None |
 
 ## Using the API
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
