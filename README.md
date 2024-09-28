@@ -24,7 +24,6 @@ Many mobile applications support one of these protocols, many do not. FreshAPI i
 | Delete a Label | :x: | :x: | :white_check_mark: |
 | OPML Export | :x: | :x: | :white_check_mark: |
 | OPML Import | :x: | :x: | :white_check_mark: |
-| Trigger Individual Feed Update | :x: | :white_check_mark: | :x: |
 
 ## Requirements
 
@@ -65,7 +64,7 @@ The following clients have been or will be tested. For any reports of additional
 | [ReadKit](https://readkit.app/) | iOS | Fully Functional | None |
 | [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
 | [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
-| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Partially Functional | Only Pulls down ~200 articles. Investigation needed. |
+| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS | Fully Functional | None |
 
 ## Using the API
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
@@ -107,8 +106,8 @@ This project is licensed under the [GNU AGPL 3 License](http://www.gnu.org/licen
 
 ## Acknowledgements
 
-- Major thanks to Tiny Tiny RSS and its developer Fox for making the best self-hosted RSS reader available
-- Thanks to the FreshRSS team for both expanding on the Google Reader API and for providing an excellent example of implementation using PHP found at [here](https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php)
+- Major thanks to Tiny Tiny RSS and its developer Andrew for making the best self-hosted RSS reader available
+- Thanks to the FreshRSS team for both expanding on the Google Reader API and for providing an excellent example of implementation using PHP found [here](https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php)
 
 ## Disclaimer
 

@@ -784,83 +784,6 @@ final class FreshGReaderAPI extends API {
 		echo json_encode($result, JSON_OPTIONS), "\n";
 		exit();
 	}
-	/**
-	 * @param 'A'|'c'|'f'|'s' $type
-	 * @param string|int $streamId
-	 * @phpstan-return array{'A'|'c'|'f'|'s'|'t',int,int}
-	 */
-	private function streamContentsFilters(string $type, $streamId,
-		string $filter_target, string $exclude_target, int $start_time, int $stop_time, string $session_id): array {
-		
-		$feed_id = -4; // Default to all feeds
-		$is_cat = false;
-		$view_mode = 'all_articles';
-		$search = '';
-
-		switch ($type) {
-			case 'f':    //feed
-				if ($streamId != '' && is_string($streamId) && !is_numeric($streamId)) {
-					$feedResponse = self::callTinyTinyRssApi('getFeeds', [], $session_id);
-					if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
-						foreach ($feedResponse['content'] as $feed) {
-							if ($feed['feed_url'] == $streamId) {
-								$feed_id = $feed['id'];
-								break;
-							}
-						}
-					}
-				} else {
-					$feed_id = (int)$streamId;
-				}
-				break;
-			case 'c':    //category or label
-				$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
-				if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
-					foreach ($categoryResponse['content'] as $category) {
-						if ($category['title'] == $streamId) {
-							$feed_id = $category['id'];
-							$is_cat = true;
-							break;
-						}
-					}
-				}
-				if (!$is_cat) {
-					// If not found as category, treat as label
-					$type = 't';
-					$search = 'ttrss:label:' . $streamId;
-				}
-				break;
-		}
-
-		switch ($filter_target) {
-			case 'user/-/state/com.google/read':
-				$view_mode = 'all_articles';
-				break;
-			case 'user/-/state/com.google/unread':
-				$view_mode = 'unread';
-				break;
-			case 'user/-/state/com.google/starred':
-				$view_mode = 'marked';
-				break;
-		}
-
-		if ($exclude_target === 'user/-/state/com.google/read') {
-			$view_mode = 'unread';
-		}
-
-		$search_params = [];
-		if ($start_time > 0) {
-			$search_params[] = 'after:' . date('Y-m-d', $start_time);
-		}
-		if ($stop_time > 0) {
-			$search_params[] = 'before:' . date('Y-m-d', $stop_time);
-		}
-		if (!empty($search_params)) {
-			$search .= ' ' . implode(' ', $search_params);
-		}
-
-		return [$type, $feed_id, $is_cat, $view_mode, trim($search)];
-	}
 
 	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
@@ -1252,81 +1175,156 @@ final class FreshGReaderAPI extends API {
 		exit();
 	}
 
-	private function streamContents(string $path, string $include_target, int $start_time, int $stop_time, int $count,
-    string $order, string $filter_target, string $exclude_target, string $continuation, string $session_id) {
+	private function streamContents($path, $streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-		//header('Cache-Control: no-transform');
-
-		list($type, $feed_id, $is_cat, $view_mode, $search) = self::streamContentsFilters($path, $include_target, $filter_target, $exclude_target, $start_time, $stop_time, $session_id);
-
 		$params = [
-			'feed_id' => $feed_id,
-			'is_cat' => $is_cat,
-			'limit' => $count,
-			'skip' => $continuation ? intval($continuation) : 0,
-			'view_mode' => $view_mode,
-			'order' => ($order === 'o') ? 'date_reverse' : 'feed_dates',
-			'search' => $search,
+			'limit' => $count ? intval($count) : 0, // Max articles to send to client
+			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
+			//'since_id' => $start_time,
+			'include_attachments' => true,
+			'view_mode' => $streamId == 'user/-/state/com.google/starred' ? 'marked' : 'unread', //this appears to only support starred and unread in testing with fluent reader
+			'feed_id' => -4, //setting to all articles by default
+			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
+			'show_content' => true,
 		];
 
-		// Determine the feed_id or category based on the path and include_target
-		switch ($path) {
-			case 'feed':
-				$params['feed_id'] = substr($include_target, 5); // Remove 'feed/' prefix
-				break;
-			case 'label':
-				$params['cat_id'] = $include_target;
-				break;
-			case 'reading-list':
-				$params['feed_id'] = -4; // All articles in TTRSS
-				break;
-			case 'starred':
-				$params['feed_id'] = -1; // Starred articles in TTRSS
-				$params['view_mode'] = 'marked';
-				break;
-			default:
-				$params['feed_id'] = -4; // Default to all articles
+		$itemRefs = [];
+		$totalFetched = 0;
+		$moreAvailable = false;
+		$min_date = isset($start_time) ? intval($start_time) : 0;
+		$offset = $continuation ? intval($continuation) : 0;
+		
+		if ($params['view_mode'] == 'unread') { //Unread Articles
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("SELECT extract(epoch from date_entered)::int as maxdate
+				FROM public.ttrss_user_entries a
+				inner join
+				public.ttrss_entries b
+				on a.ref_id = b.id
+				where owner_uid = ?
+				and unread = true 
+				and extract(epoch from updated) = ?
+				order by id desc");
+				$sth->execute([$_SESSION['uid'], $min_date]);
+				$minpulldate = $sth->fetch()[0];
+			} catch (PDOException $e) {
+				error_log("Database error when pulling max time: " . $e->getMessage());
+				self::badRequest();
+			}
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("SELECT ref_id::varchar
+				FROM public.ttrss_user_entries a
+				inner join
+				public.ttrss_entries b
+				on a.ref_id = b.id
+				where owner_uid = ?
+				and unread = true 
+				and extract(epoch from COALESCE(date_entered, date_updated)) > ?
+				order by ref_id DESC 
+				OFFSET ?
+				LIMIT ?");
+				$sth->execute([$_SESSION['uid'], $minpulldate, $offset, $count]);
+				$validitems = $sth->fetchAll(PDO::FETCH_COLUMN);
+			} catch (PDOException $e) {
+				error_log("Database error when pulling unread items: " . $e->getMessage());
+				self::badRequest();
+			}
+		} else if ($params['view_mode'] == 'marked') { //starred articles
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("SELECT extract(epoch from date_entered)::int as maxdate
+				FROM public.ttrss_user_entries a
+				inner join
+				public.ttrss_entries b
+				on a.ref_id = b.id
+				where owner_uid = ?
+				and marked = true 
+				and extract(epoch from updated) = ?
+				order by id desc");
+				$sth->execute([$_SESSION['uid'], $min_date]);
+				$minpulldate = $sth->fetch()[0];
+			} catch (PDOException $e) {
+				error_log("Database error when pulling max time: " . $e->getMessage());
+				self::badRequest();
+			}
+			try {
+				$pdo = Db::pdo();
+				$sth = $pdo->prepare("SELECT ref_id::varchar
+				FROM public.ttrss_user_entries a
+				inner join
+				public.ttrss_entries b
+				on a.ref_id = b.id
+				where owner_uid = ?
+				and marked = true 
+				and extract(epoch from date_entered) > ?
+				order by ref_id DESC 
+				OFFSET ?
+				LIMIT ?");
+				$sth->execute([$_SESSION['uid'], $minpulldate, $offset, $count]);
+				$validitems = $sth->fetchAll(PDO::FETCH_COLUMN);
+			} catch (PDOException $e) {
+				error_log("Database error when pulling read items: " . $e->getMessage());
+				self::badRequest();
+			}
 		}
-
-		// Apply filters
-		if ($filter_target === 'user/-/state/com.google/read') {
-			$params['view_mode'] = 'all_articles';
-		} elseif ($filter_target === 'user/-/state/com.google/reading-list') {
-			$params['view_mode'] = 'unread';
+		/*
+		if (strpos($streamId, 'feed/') === 0) {
+			$params['feed_id'] = substr($streamId, 5);
+		} elseif (strpos($streamId, 'user/-/label/') === 0) {
+			$cat_or_label = self::getCategoryLabelID(substr($streamId, 13), $session_id);
+			if ($cat_or_label > -10) { // below -10 are Labels, above are categories
+				$params['is_cat'] = true;
+			}
+			$params['feed_id'] = $cat_or_label; // Remove 'user/-/label/' prefix
 		}
+		*/
+		while (($totalFetched < $count) && ($totalFetched <= 15000)) { //setting max cap just in case
+			$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
 
-		if ($exclude_target === 'user/-/state/com.google/read') {
-			$params['view_mode'] = 'unread';
-		}
+			if (!($response && isset($response['status']) && $response['status'] == 0)) {
+				self::internalServerError();
+			}
+	
+			$items = $response['content'];
+			$itemCount = count($items);
 
-		$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
-
-		if ($response && isset($response['status']) && $response['status'] == 0) {
-			$items = [];
-			foreach ($response['content'] as $article) {
-				$items[] = self::convertTtrssArticleToGreaderFormat($article);
-				// Trigger garbage collection every 100 items
-				if (count($items) % 100 == 0) {
-					self::triggerGarbageCollection();
+			foreach ($items as $article) {
+				if ($totalFetched < $count) {
+					if (in_array($article['id'], $validitems)) {
+						$itemRefs[] = self::convertTtrssArticleToGreaderFormat($article);
+						$totalFetched++;
+					}
+				} else {
+					$moreAvailable = true;
+					break;
 				}
 			}
-
-			$result = [
-				'id' => $path === 'feed' ? $include_target : 'user/-/state/com.google/reading-list',
-				'updated' => time(),
-				'items' => $items,
-			];
-
-			if (count($items) >= $count) {
-				$result['continuation'] = $params['skip'] + $count;
+	
+			if ($itemCount < 200) {
+				// We've reached the end of available items
+				break;
 			}
-			unset($items);
-            self::triggerGarbageCollection();
-			echo json_encode($result, JSON_OPTIONS);
-			exit();
+			$params['skip'] += $itemCount;
 		}
 
-		self::internalServerError();
+		$result = [
+			'id' => $path === 'feed' ? $include_target : 'user/-/state/com.google/reading-list',
+			'updated' => time(),
+			'items' => $itemRefs,
+		];
+	
+		if ($moreAvailable || ($totalFetched == $count)) {
+			// There are more items available
+			$result['continuation'] = '' . ($continuation ? intval($continuation) : 0) + $totalFetched;
+		}
+		unset($itemRefs);
+		unset($items);
+		unset($response);
+		self::triggerGarbageCollection();
+		echo json_encode($result, JSON_OPTIONS), "\n";
+		exit();
 	}
 
 	private function convertTtrssArticleToGreaderFormat($article) {
@@ -1642,8 +1640,8 @@ final class FreshGReaderAPI extends API {
         error_log(print_r($pathInfo,true));
 		error_log(print_r('2-REQUEST=',true));
         error_log(print_r($_REQUEST,true));
-		//error_log(print_r('3-ORIGINAL_INPUT',true));
-		//error_log(print_r($ORIGINAL_INPUT,true));
+		error_log(print_r('3-ORIGINAL_INPUT',true));
+		error_log(print_r($ORIGINAL_INPUT,true));
 		error_log(print_r(headerVariable('Authorization', 'GoogleLogin_auth'),true));
 		error_log(print_r($_SESSION,true));
 		
