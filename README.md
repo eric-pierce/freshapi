@@ -52,6 +52,9 @@ If you are using another installation method please provide details about your s
 
    Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
+## Non-Official Docker based Installs
+If you're using an install method other than [the official docker images](https://tt-rss.org/wiki/InstallationNotes/) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx .conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files form the [official](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/blob/master/.docker/web-nginx/nginx.conf?ref_type=heads#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
+
 ## Compatible Clients
 
 The following clients have been tested, but FreshAPI should be compatible with any FreshRSS or Google Reader API compatible client. If you run into any issues or would like to report a client as working, please [open up an issue](https://github.com/eric-pierce/freshapi/issues/new/choose).
@@ -82,7 +85,6 @@ SID=yourusername/r4ih6gt412opqh11gptp3hodd6
 LSID=
 Auth=yourusername/r4ih6gt412opqh11gptp3hodd6
 ```
-
 
 2. Calling the API Directly
 
