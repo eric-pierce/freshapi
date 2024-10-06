@@ -29,7 +29,7 @@ Many mobile applications support one of these protocols, many do not. FreshAPI i
 
 FreshAPI assumes that you're using the official docker based integration and running the latest version of TT-RSS. A change required for the API to work (enabling PATH_INFO for the plugins.local directory) was [pushed on 9/11/2024](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/merge_requests/61), so any docker images from before that change will need to be updated.
 
-If you are using another installation method please provide details about your setup in any issues you open.
+If you are using another installation method you may need to make this PATH_INFO update yourself, more details [here](#non-official-docker-based-installs). Please provide details about your setup in any issues you open.
 
 ## Installation
 
