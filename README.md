@@ -74,7 +74,7 @@ The following clients have been tested, but FreshAPI should be compatible with a
 | [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
 | [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
 
-## Using the API
+## Direct API Usage
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:
 
 1. Authorization
