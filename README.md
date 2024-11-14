@@ -57,11 +57,13 @@ Please provide details about your setup in any issues you open.
    Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Non-Official Docker based Installs
-If you're using an install method other than [the official docker images](https://tt-rss.org/wiki/InstallationNotes/) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx .conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files form the [official](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/blob/master/.docker/web-nginx/nginx.conf?ref_type=heads#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
+If you're using an install method other than [the official docker images](https://tt-rss.org/wiki/InstallationNotes/) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx.conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files from the [official](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/blob/master/.docker/web-nginx/nginx.conf?ref_type=heads#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
 
 ### NixOS
 
-In your `configuration.nix`
+If you're using NixOS with Postgres, use the following as a template:
+
+`configuration.nix`
 
 ```
    services.tt-rss = {
@@ -75,7 +77,7 @@ In your `configuration.nix`
    };
 ```
 
-and then the nginx PATH_INFO config in `configuration.nix`
+PATH_INFO nginx config in `configuration.nix`
 
 ```
      virtualHosts."<HOST from above>" = {
@@ -93,7 +95,7 @@ and then the nginx PATH_INFO config in `configuration.nix`
        };
 ```
 
-and then `freshapi.nix` would look like
+`freshapi.nix` should contain:
 
 ```
 { lib, stdenv, fetchFromGitHub, tt-rss }:
@@ -126,11 +128,6 @@ stdenv.mkDerivation {
   };
 }
 ```
-
-
-## Notes
-
-This only works if your Tiny Tiny RSS is using postgres as the backing db.
 
 ## Compatible Clients
 
