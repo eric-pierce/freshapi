@@ -57,7 +57,77 @@ Please provide details about your setup in any issues you open.
    Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Non-Official Docker based Installs
-If you're using an install method other than [the official docker images](https://tt-rss.org/wiki/InstallationNotes/) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx .conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files form the [official](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/blob/master/.docker/web-nginx/nginx.conf?ref_type=heads#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
+If you're using an install method other than [the official docker images](https://tt-rss.org/wiki/InstallationNotes/) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx.conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files from the [official](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/blob/master/.docker/web-nginx/nginx.conf?ref_type=heads#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
+
+### NixOS
+
+If you're using NixOS with Postgres, use the following as a template:
+
+`configuration.nix`
+
+```
+   services.tt-rss = {
+     enable = true;
+     database = {
+       type = "pgsql";
+     };
+     selfUrlPath = "http://<Host>";
+     virtualHost = "<Host>";
+     pluginPackages = [ (pkgs.callPackage ./freshapi.nix {}) ];
+   };
+```
+
+PATH_INFO nginx config in `configuration.nix`
+
+```
+     virtualHosts."<HOST from above>" = {
+       locations."~ /plugins\\.local/.*/api/.*\\.php(/|$)" = {
+         extraConfig = ''
+           fastcgi_split_path_info ^(.+\.php)(/.+)$;
+           try_files $fastcgi_script_name =404;
+           set $path_info $fastcgi_path_info;
+           fastcgi_param PATH_INFO $path_info;
+           fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+           fastcgi_pass unix:/run/phpfpm/tt-rss.sock;
+           include ${config.services.nginx.package}/conf/fastcgi_params;
+           fastcgi_index index.php;
+         '';
+       };
+```
+
+`freshapi.nix` should contain:
+
+```
+{ lib, stdenv, fetchFromGitHub, tt-rss }:
+
+stdenv.mkDerivation {
+  pname = "tt-rss-plugin-freshapi";
+  version = "0.01";
+
+  src = fetchFromGitHub {
+    owner = "eric-pierce";
+    repo = "freshapi";
+    rev = "942b1c37ef2035444c3a22a21e225f3ece73c705"; # this and the line below needs to be updated based on the git sha of freshapi you want to install
+    sha256 = "sha256-XWzEya+1A/UtwTL+HseoX8trEypNjHurK/VF3k2seMQ";
+  };
+
+  installPhase = ''
+    mkdir -p $out/freshapi
+    cp -r api init.php $out/freshapi
+  '';
+
+  meta = with lib; {
+    description = "Tiny Tiny RSS FreshAPI Plugin";
+    longDescription = ''
+      A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
+    '';
+    license = with licenses; [ agpl3Only ];
+    homepage = "https://github.com/eric-pierce/freshapi";
+    maintainers = with maintainers; [ bigloser ];
+    inherit (tt-rss.meta) platforms;
+  };
+}
+```
 
 ## Compatible Clients
 
