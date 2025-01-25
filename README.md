@@ -70,9 +70,11 @@ The following clients have been tested, but FreshAPI should be compatible with a
 | [lire](https://lireapp.com/) | iOS, macOS | Fully Functional | None |
 | [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS, macOS | Fully Functional | None |
 | [ReadKit](https://readkit.app/) | iOS, macOS | Fully Functional | None |
-| [Fluent Reader](https://github.com/yang991178/fluent-reader) | iOS, macOS | Fully Functional | None |
+| [Fluent Reader Lite](https://github.com/yang991178/fluent-reader-lite) | iOS | Fully Functional | Fluent Reader Lite supports Max 1500 unread articles across all types (unread, starred, etc) |
+| [Fluent Reader](https://github.com/yang991178/fluent-reader) | macOS, Windows | Fully Functional | None |
 | [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
 | [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
+| [News Flash](https://gitlab.com/news-flash/news_flash_gtk) | Linux | Fully Functional | None |
 
 ## Direct API Usage
 FreshRSS and Google Reader compatible clients can natively use this API, but if you'd like to access it directly you can do so by making cURL calls. The Google Reader API spec is well documented, but here is an example of API usage:

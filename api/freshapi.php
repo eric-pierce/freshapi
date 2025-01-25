@@ -1182,36 +1182,20 @@ final class FreshGReaderAPI extends API {
 			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
 			//'since_id' => $start_time,
 			'include_attachments' => true,
-			'view_mode' => $streamId == 'user/-/state/com.google/starred' ? 'marked' : 'unread', //this appears to only support starred and unread in testing with fluent reader
+			'view_mode' => (($path == 'user/-/state/com.google/starred') || ($path == 'starred')) ? 'marked' : 'unread', //this appears to only support starred and unread in testing with fluent reader
 			'feed_id' => -4, //setting to all articles by default
 			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
 			'show_content' => true,
 		];
-
 		$itemRefs = [];
 		$totalFetched = 0;
 		$moreAvailable = false;
 		$min_date = isset($start_time) ? intval($start_time) : 0;
 		$offset = $continuation ? intval($continuation) : 0;
-		
+/*
+// Note that this section was originally used to validate the article list to work off of when pulling articles, but it looks like the "StreamContents" API may not have been working as intended. FluentReader, NewsFlash, and others which use this API now work as intended as best I can tell.
+// Commenting out for now in case immediate issues are reported with the change.
 		if ($params['view_mode'] == 'unread') { //Unread Articles
-			try {
-				$pdo = Db::pdo();
-				$sth = $pdo->prepare("SELECT extract(epoch from date_entered)::int as maxdate
-				FROM public.ttrss_user_entries a
-				inner join
-				public.ttrss_entries b
-				on a.ref_id = b.id
-				where owner_uid = ?
-				and unread = true 
-				and extract(epoch from updated) = ?
-				order by id desc");
-				$sth->execute([$_SESSION['uid'], $min_date]);
-				$minpulldate = $sth->fetch()[0];
-			} catch (PDOException $e) {
-				error_log("Database error when pulling max time: " . $e->getMessage());
-				self::badRequest();
-			}
 			try {
 				$pdo = Db::pdo();
 				$sth = $pdo->prepare("SELECT ref_id::varchar
@@ -1225,30 +1209,15 @@ final class FreshGReaderAPI extends API {
 				order by ref_id DESC 
 				OFFSET ?
 				LIMIT ?");
-				$sth->execute([$_SESSION['uid'], $minpulldate, $offset, $count]);
+				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
 				$validitems = $sth->fetchAll(PDO::FETCH_COLUMN);
 			} catch (PDOException $e) {
 				error_log("Database error when pulling unread items: " . $e->getMessage());
 				self::badRequest();
 			}
+			error_log(print_r('itmes', true));
+			error_log(print_r(count($validitems), true));
 		} else if ($params['view_mode'] == 'marked') { //starred articles
-			try {
-				$pdo = Db::pdo();
-				$sth = $pdo->prepare("SELECT extract(epoch from date_entered)::int as maxdate
-				FROM public.ttrss_user_entries a
-				inner join
-				public.ttrss_entries b
-				on a.ref_id = b.id
-				where owner_uid = ?
-				and marked = true 
-				and extract(epoch from updated) = ?
-				order by id desc");
-				$sth->execute([$_SESSION['uid'], $min_date]);
-				$minpulldate = $sth->fetch()[0];
-			} catch (PDOException $e) {
-				error_log("Database error when pulling max time: " . $e->getMessage());
-				self::badRequest();
-			}
 			try {
 				$pdo = Db::pdo();
 				$sth = $pdo->prepare("SELECT ref_id::varchar
@@ -1262,7 +1231,7 @@ final class FreshGReaderAPI extends API {
 				order by ref_id DESC 
 				OFFSET ?
 				LIMIT ?");
-				$sth->execute([$_SESSION['uid'], $minpulldate, $offset, $count]);
+				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
 				$validitems = $sth->fetchAll(PDO::FETCH_COLUMN);
 			} catch (PDOException $e) {
 				error_log("Database error when pulling read items: " . $e->getMessage());
@@ -1292,16 +1261,16 @@ final class FreshGReaderAPI extends API {
 
 			foreach ($items as $article) {
 				if ($totalFetched < $count) {
-					if (in_array($article['id'], $validitems)) {
+					//if (in_array($article['id'], $validitems)) {
 						$itemRefs[] = self::convertTtrssArticleToGreaderFormat($article);
 						$totalFetched++;
-					}
+					//}
 				} else {
 					$moreAvailable = true;
 					break;
 				}
 			}
-	
+
 			if ($itemCount < 200) {
 				// We've reached the end of available items
 				break;
