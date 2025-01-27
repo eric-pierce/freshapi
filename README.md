@@ -140,8 +140,8 @@ The following clients have been tested, but FreshAPI should be compatible with a
 | [lire](https://lireapp.com/) | iOS, macOS | Fully Functional | None |
 | [Fiery Feeds](https://voidstern.net/fiery-feeds) | iOS, macOS | Fully Functional | None |
 | [ReadKit](https://readkit.app/) | iOS, macOS | Fully Functional | None |
-| [Fluent Reader Lite](https://github.com/yang991178/fluent-reader-lite) | iOS | Fully Functional | Fluent Reader Lite supports Max 1500 unread articles across all types (unread, starred, etc) |
-| [Fluent Reader](https://github.com/yang991178/fluent-reader) | macOS, Windows | Fully Functional | None |
+| [Fluent Reader Lite](https://github.com/yang991178/fluent-reader-lite) | iOS | Fully Functional | 1. Fluent Reader Lite supports Max 1500 unread articles across all types (unread, starred, etc). <br>2. The article count for Fluent Reader is oftentimes inaccurate. This is a Fluent Reader issue (tracked here https://github.com/yang991178/fluent-reader/issues/537), not a FreshAPI issue. |
+| [Fluent Reader](https://github.com/yang991178/fluent-reader) | macOS, Windows | Fully Functional | The article count for Fluent Reader is oftentimes inaccurate. This is a Fluent Reader issue (tracked here https://github.com/yang991178/fluent-reader/issues/537), not a FreshAPI issue. |
 | [FeedMe](https://github.com/seazon/FeedMe) | Android | Fully Functional | None |
 | [Read You](https://github.com/Ashinch/ReadYou) | Android | Fully Functional | None |
 | [News Flash](https://gitlab.com/news-flash/news_flash_gtk) | Linux | Fully Functional | None |
