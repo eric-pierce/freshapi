@@ -188,6 +188,26 @@ This project is licensed under the [GNU AGPL 3 License](http://www.gnu.org/licen
 - Major thanks to Tiny Tiny RSS and its developer Andrew for making the best self-hosted RSS reader available
 - Thanks to the FreshRSS team for both expanding on the Google Reader API and for providing an excellent example of implementation using PHP found [here](https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php)
 
+## Additional Documentation
+The Google Reader API is well documentated, below are some examples outlining its functionality:
+* https://freshrss.github.io/FreshRSS/en/developers/06_GoogleReader_API.html
+* https://code.google.com/archive/p/pyrfeed/wikis/GoogleReaderAPI.wiki
+* https://web.archive.org/web/20130718025427/http://undoc.in/
+* http://ranchero.com/downloads/GoogleReaderAPI-2009.pdf
+* https://github.com/mihaip/google-reader-api
+* https://web.archive.org/web/20210126113527/https://blog.martindoms.com/2009/08/15/using-the-google-reader-api-part-1
+* https://github.com/noinnion/newsplus/blob/master/extensions/GoogleReaderCloneExtension/src/com/noinnion/android/newsplus/extension/google_reader/GoogleReaderClient.java
+* https://github.com/ericmann/gReader-Library/blob/master/greader.class.php
+* https://github.com/devongovett/reader
+* https://github.com/theoldreader/api
+* https://www.inoreader.com/developers/
+* https://feedhq.readthedocs.io/en/latest/api/index.html
+* https://github.com/bazqux/bazqux-api
+* https://xueli-sherryli.github.io/friendlier-fresh-rss-api-doc/en/
+* https://web.archive.org/web/20170426184845/http://www.niallkennedy.com/blog/2005/12/google-reader-api.html
+* https://web.archive.org/web/20140919042419/http://code.google.com/p/google-reader-api/w/list
+
+
 ## Disclaimer
 
 This project is not affiliated with or endorsed by FreshRSS, Google, or Tiny Tiny RSS. Use at your own risk.
