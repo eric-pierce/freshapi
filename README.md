@@ -177,7 +177,7 @@ FreshAPI uses a rolling release approach, though I'll increment the version numb
 
 ## Issues & Contributing
 
-Both Issues and Contributions and Pull Requests are welcome and encouraged - please feel free to open either.
+Issues, Contributions, and Pull Requests are welcome and encouraged - please feel free to open any of them.
 
 ## License
 
