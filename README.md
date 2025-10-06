@@ -2,8 +2,8 @@
 A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
-Tiny-Tiny RSS is one of the best and most customizable self-hostable RSS readers available, but historically has had only limited compatibility with third party RSS readers through two APIs:
-1. [The Official API](https://tt-rss.org/ApiReference/)
+[Tiny-Tiny RSS](github.com/tt-rss/tt-rss/) is one of the best and most customizable self-hostable RSS readers available, but historically has had only limited compatibility with third party RSS readers through two APIs:
+1. [The Official API](https://github.com/tt-rss/tt-rss/wiki/Api-Reference)
 2. [The Fever API Plugin](https://github.com/DigitalDJ/tinytinyrss-fever-plugin)
 
 Many mobile applications support one of these protocols, many do not. FreshAPI implements the FreshRSS / Google Reader API to allow Tiny-Tiny RSS to be used with more third party apps, and with more features.
@@ -27,7 +27,7 @@ Many mobile applications support one of these protocols, many do not. FreshAPI i
 
 ## Requirements
 
-FreshAPI assumes that you're using the official docker based integration and running the latest version of TT-RSS with PostgreSQL as the backend database. A change required for the API to work (enabling PATH_INFO for the plugins.local directory) was [pushed on 9/11/2024](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/merge_requests/61), so any docker images from before that change will need to be updated.
+FreshAPI assumes that you're using the official docker based integration and running the latest version of TT-RSS with PostgreSQL as the backend database. A change required for the API to work (enabling PATH_INFO for the plugins.local directory) was [pushed on 9/11/2024], so any docker images from before that change will need to be updated.
 
 If you are using another installation method you may need to make this PATH_INFO update yourself, more details [here](#non-official-docker-based-installs).
 
@@ -52,12 +52,12 @@ Please provide details about your setup in any issues you open.
 
    If you're using the standard docker installation use ```https://yourdomain.com/tt-rss/plugins.local/freshapi/api/greader.php``` as the server URL. 
 
-   If you're running the TT-RSS app at the website root (not including /tt-rss/ in the URL) by using the APP_WEB_ROOT and APP_BASE environment variables as described [here](https://tt-rss.org/wiki/InstallationNotes/#how-do-i-make-it-run-without-tt-rss-in-the-url-ie-at-website-root) you'll also need to remove tt-rss from the domain you use with clients: ```https://yourdomain.com/plugins.local/freshapi/api/greader.php```
+   If you're running the TT-RSS app at the website root (not including /tt-rss/ in the URL) by using the APP_WEB_ROOT and APP_BASE environment variables as described [here](https://github.com/tt-rss/tt-rss/wiki/Installation-Guide#how-do-i-make-it-run-without-tt-rss-in-the-url-ie-at-website-root) you'll also need to remove tt-rss from the domain you use with clients: ```https://yourdomain.com/plugins.local/freshapi/api/greader.php```
 
    Use your standard TT-RSS username and password. If you've enabled 2 Factor Authentication (2FA) generate and use an App Password.
 
 ## Non-Official Docker based Installs
-If you're using an install method other than [the official docker images](https://tt-rss.org/wiki/InstallationNotes/) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx.conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files from the [official](https://gitlab.tt-rss.org/tt-rss/tt-rss/-/blob/master/.docker/web-nginx/nginx.conf?ref_type=heads#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
+If you're using an install method other than [the official docker images](https://github.com/tt-rss/tt-rss/wiki/Installation-Guide) or [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS) then you may need to modify your nginx.conf files to support PATH_INFO, which is how the FreshRSS and Google Reader APIs pass requests to the backend server. This is as simple as adding a new "location" ruleset in the .conf file to enable PATH_INFO for the freshapi URL. You can use the nginx.conf files from the [official](https://github.com/tt-rss/tt-rss/blob/2cfb58cf8cf872c164d12d1a4ecec55388f4b502/.docker/web-nginx/nginx.conf#L53-L72) and [Awesome-TTRSS](https://github.com/HenryQW/Awesome-TTRSS/blob/main/src/ttrss.nginx.conf#L38-L46) installs as a guide, and there's a discussion about enabling this [here](https://github.com/eric-pierce/freshapi/issues/7#issuecomment-2395496729).
 
 ### NixOS
 
