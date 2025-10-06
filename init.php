@@ -2,7 +2,7 @@
 
 /**
 == Description ==
-Server-side API for the Tiny Tiny RSS project https://tt-rss.org compatible with FreshRSS and Google Reader API Specs
+Server-side API for the Tiny Tiny RSS project https://github.com/tt-rss/tt-rss compatible with FreshRSS and Google Reader API Specs
 This plugin will use a rolling release approach, with notable changes mentioned in the section below
 
 == Credits ==
