@@ -2,7 +2,7 @@
 A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
-[Tiny-Tiny RSS](github.com/tt-rss/tt-rss/) is one of the best and most customizable self-hostable RSS readers available, but historically has had only limited compatibility with third party RSS readers through two APIs:
+[Tiny-Tiny RSS](https://github.com/tt-rss/tt-rss/) is one of the best and most customizable self-hostable RSS readers available, but historically has had only limited compatibility with third party RSS readers through two APIs:
 1. [The Official API](https://github.com/tt-rss/tt-rss/wiki/Api-Reference)
 2. [The Fever API Plugin](https://github.com/DigitalDJ/tinytinyrss-fever-plugin)
 
