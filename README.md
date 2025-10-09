@@ -1,4 +1,4 @@
-# FreshAPI
+# FreshAPI for Tiny-Tiny RSS
 A FreshRSS / Google Reader API Plugin for Tiny-Tiny RSS
 
 ## Background
