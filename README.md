@@ -185,7 +185,7 @@ This project is licensed under the [GNU AGPL 3 License](http://www.gnu.org/licen
 
 ## Acknowledgements
 
-- Major thanks to Tiny Tiny RSS and its developer Andrew for making the best self-hosted RSS reader available
+- Major thanks to Tiny Tiny RSS, its original developer Andrew, and the current developer [supahgreg](https://github.com/supahgreg) for making the best self-hosted RSS reader available
 - Thanks to the FreshRSS team for both expanding on the Google Reader API and for providing an excellent example of implementation using PHP found [here](https://github.com/FreshRSS/FreshRSS/blob/edge/p/api/greader.php)
 
 ## Additional Documentation
