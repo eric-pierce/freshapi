@@ -1409,6 +1409,48 @@ final class FreshGReaderAPI extends API {
 				], $session_id);
 			}
 		}
+
+		// Handle article labels (user/-/label/labelname)
+		$add_label = null;
+		$remove_label = null;
+
+		if ($a != '' && strpos($a, 'user/-/label/') === 0) {
+			$add_label = substr($a, 13);
+		}
+		if ($r != '' && strpos($r, 'user/-/label/') === 0) {
+			$remove_label = substr($r, 13);
+		}
+
+		if ($add_label !== null || $remove_label !== null) {
+			$uid = $_SESSION['uid'] ?? null;
+			if ($uid === null) {
+				self::unauthorized();
+			}
+
+			foreach ($e_ids as $e_id) {
+				if (!ctype_digit($e_id) || $e_id[0] === '0' || (substr($_SERVER['HTTP_USER_AGENT'], 0, 11) == 'NetNewsWire')) {
+					$article_id = hex2dec(basename($e_id));
+				} else {
+					$article_id = (int)$e_id;
+				}
+
+				// Add label to article
+				if ($add_label !== null) {
+					// Create label if it doesn't exist
+					if (!Labels::find_id($add_label, $uid)) {
+						Labels::create($add_label, '', '', $uid);
+					}
+					// Add label to article
+					Labels::add_article($article_id, $add_label, $uid);
+				}
+
+				// Remove label from article
+				if ($remove_label !== null) {
+					Labels::remove_article($article_id, $remove_label, $uid);
+				}
+			}
+		}
+
 		exit('OK');
 	}
 
