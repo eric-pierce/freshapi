@@ -22,6 +22,8 @@ Many mobile applications support one of these protocols, many do not. FreshAPI i
 | Create a new Category | :x: | :x: | :white_check_mark: |
 | Rename a Label | :x: | :x: | :white_check_mark: |
 | Delete a Label | :x: | :x: | :white_check_mark: |
+| Add a Custom Label / Tag | :x: | :x: | :white_check_mark: |
+| Delete a Custom Label / Tag | :x: | :x: | :white_check_mark: |
 | OPML Export | :x: | :x: | :white_check_mark: |
 | OPML Import | :x: | :x: | :white_check_mark: |
 
