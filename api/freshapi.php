@@ -612,7 +612,7 @@ final class FreshGReaderAPI extends API {
 				switch ($action) {
 					case 'subscribe':
 						if ($feedId == 0) {
-							$subscribeResponse = self::quickadd($url, $session_id, $category_id);
+							$subscribeResponse = self::quickadd($streamUrl, $session_id, $category_id);
 							if (!$subscribeResponse) {
 								self::badRequest();
 							}
