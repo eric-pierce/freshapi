@@ -30,8 +30,8 @@ function escapeToUnicodeAlternative(string $text, bool $extended = false): strin
 
 	// https://raw.githubusercontent.com/mihaip/google-reader-api/master/wiki/StreamId.wiki
 	if ($extended) {
-		$problem += array("'", '"', '^', '?', '\\', '/', ',', ';');
-		$replace += array("’", '＂', '＾', '？', '＼', '／', '，', '；');
+		$problem += array("'", '"', '^', '?', '\\', '/', ',', ';', '#8220', '#8221', '#8211', '#8217');
+		$replace += array("’", '＂', '＾', '？', '＼', '／', '，', '；', '"', '"', '-', '\'');
 	}
 
 	return trim(str_replace($problem, $replace, $text));
@@ -376,11 +376,12 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function subscriptionExport(string $session_id) {
-		$_REQUEST['include_settings'] = 1;
 		$opml = new OPML($_REQUEST);
-		$opml_exp = $opml->export();
-
-		echo $opml_exp[0];
+		ob_start();
+		$opml_exp = $opml->opml_export('', $_SESSION['uid'], false, 1, false);
+		$opml_export = ob_get_contents();
+		ob_end_clean();
+		echo $opml_export;
 		exit();
 	}
 
@@ -1279,7 +1280,7 @@ final class FreshGReaderAPI extends API {
 		}
 
 		$result = [
-			'id' => $path === 'feed' ? $include_target : 'user/-/state/com.google/reading-list',
+			'id' => $path === 'feed' ? $streamId : 'user/-/state/com.google/reading-list',
 			'updated' => time(),
 			'items' => $itemRefs,
 		];
@@ -1302,7 +1303,7 @@ final class FreshGReaderAPI extends API {
 			'crawlTimeMsec' => $article['updated'] . '000', //time() . '000',//strval(dateAdded(true, true)),
 			'timestampUsec' => $article['updated'] . '000000', //'' . time() . '000000',//strval(dateAdded(true, true)) . '000', //EasyRSS & Reeder
 			'published' => $article['updated'],
-			'title' => (array_key_exists('title', $article) && !empty($article['title'])) ? escapeToUnicodeAlternative($article['title'], false) : '',
+			'title' => (array_key_exists('title', $article) && !empty($article['title'])) ? escapeToUnicodeAlternative($article['title'], true) : '',
 			//'updated' => date(DATE_ATOM, $article['updated']),
 			'canonical' => [
 				['href' => htmlspecialchars_decode($article['link'], ENT_QUOTES)]
@@ -1318,7 +1319,7 @@ final class FreshGReaderAPI extends API {
 			],
 			'origin' => [
 				'streamId' => 'feed/' . $article['feed_id'],
-				'title' => (array_key_exists('feed_title', $article) && !empty($article['feed_title'])) ? escapeToUnicodeAlternative($article['feed_title'], false) : '',
+				'title' => (array_key_exists('feed_title', $article) && !empty($article['feed_title'])) ? escapeToUnicodeAlternative($article['feed_title'], true) : '',
 			],
 			'summary' => [
 				//'content' => $article['content'],

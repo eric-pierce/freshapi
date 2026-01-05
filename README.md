@@ -47,8 +47,10 @@ Please provide details about your setup in any issues you open.
   
 3. In Preferences, open the Plugin menu and enable "freshapi"
    <img src="https://github.com/user-attachments/assets/68260e5f-bcb8-4e14-a416-3d31104d9006" width="800" />
-  
-4. When configuring your mobile app, select either "FreshRSS" or "Google Reader API". You'll need to point your client to your TT-RSS installation, depending on your setup. If you're using a subdomain to host TT-RSS then use ```https://yoursubdomain.yourdomain.com``` instead of ```https://yourdomain.com``` in the requests below.
+
+4. To confirm that everything is configured correctly, visit ```https://yourdomain.com/tt-rss/plugins.local/freshapi/api/greader.php``` in a browser, and you should see the text "OK" displayed.
+
+5. When configuring your mobile app, select either "FreshRSS" or "Google Reader API". You'll need to point your client to your TT-RSS installation, depending on your setup. If you're using a subdomain to host TT-RSS then use ```https://yoursubdomain.yourdomain.com``` instead of ```https://yourdomain.com``` in the requests below.
 
    If you're using the standard docker installation use ```https://yourdomain.com/tt-rss/plugins.local/freshapi/api/greader.php``` as the server URL. 
 
