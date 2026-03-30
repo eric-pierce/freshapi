@@ -30,8 +30,8 @@ function escapeToUnicodeAlternative(string $text, bool $extended = false): strin
 
 	// https://raw.githubusercontent.com/mihaip/google-reader-api/master/wiki/StreamId.wiki
 	if ($extended) {
-		$problem += array("'", '"', '^', '?', '\\', '/', ',', ';', '#8220', '#8221', '#8211', '#8217');
-		$replace += array("’", '＂', '＾', '？', '＼', '／', '，', '；', '"', '"', '-', '\'');
+		$problem += array("'", '"', '^', '?', '\\', '/', ';', '#8220', '#8221', '#8211', '#8217');
+		$replace += array("’", '＂', '＾', '？', '＼', '／', '；', '"', '"', '-', '\'');
 	}
 
 	return trim(str_replace($problem, $replace, $text));
