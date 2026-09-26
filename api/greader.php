@@ -25,6 +25,10 @@ require_once $ttrss_root . "/include/sessions.php";
 require_once $ttrss_root . "/include/functions.php";
 require_once "./freshapi.php";
 
+// TT-RSS's ORM opens its own PDO connection by default, doubling Postgres connections per request (#16).
+// Hand it the connection Db::pdo() already uses instead.
+ORM::set_db(Db::pdo());
+
 define('NO_SESSION_AUTOSTART', true);
 define('TTRSS_SELF_URL_PATH', preg_replace('/(\/api\/{1,}|\/+plugins(.local)?\/.{1,}\/{1,})?(\w+\.php).*/', '', Config::get_self_url()));
 const JSON_OPTIONS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;

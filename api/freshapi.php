@@ -314,6 +314,41 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
+	/**
+	 * Same shape as the API's getCategories(include_empty) response, without the per-category unread counters
+	 * that make that call expensive (#16). Callers here only need ids and titles.
+	 */
+	private function categoriesResponse(): array {
+		$cats = [];
+		try {
+			$sth = Db::pdo()->prepare("SELECT id, title FROM ttrss_feed_categories WHERE owner_uid = ?");
+			$sth->execute([$_SESSION['uid']]);
+			while ($row = $sth->fetch(PDO::FETCH_ASSOC)) {
+				$cats[] = ['id' => (int)$row['id'], 'title' => $row['title']];
+			}
+		} catch (PDOException $e) {
+			error_log("Database error when pulling categories: " . $e->getMessage());
+			return ['status' => 1, 'content' => []];
+		}
+		foreach ([Feeds::CATEGORY_LABELS, Feeds::CATEGORY_SPECIAL, Feeds::CATEGORY_UNCATEGORIZED] as $cat_id) {
+			$cats[] = ['id' => $cat_id, 'title' => Feeds::_get_cat_title($cat_id, $_SESSION['uid'])];
+		}
+		return ['status' => 0, 'content' => $cats];
+	}
+
+	/** @return array<int, array{id: int, title: string, feed_url: string, site_url: string, cat_id: int}> */
+	private function userFeeds(): array {
+		$sth = Db::pdo()->prepare("SELECT id, title, feed_url, site_url, COALESCE(cat_id, 0) AS cat_id FROM ttrss_feeds WHERE owner_uid = ? ORDER BY title");
+		$sth->execute([$_SESSION['uid']]);
+		$feeds = [];
+		while ($row = $sth->fetch(PDO::FETCH_ASSOC)) {
+			$row['id'] = (int)$row['id'];
+			$row['cat_id'] = (int)$row['cat_id'];
+			$feeds[$row['id']] = $row;
+		}
+		return $feeds;
+	}
+
 	/** @return never */
 	private function userInfo() {
 		$user = $_SESSION['name'];
@@ -335,7 +370,7 @@ final class FreshGReaderAPI extends API {
 		];
 
 		// Fetch categories
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$categoriesResponse = self::categoriesResponse();
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			foreach ($categoriesResponse['content'] as $category) {
 				if ($category['title'] != 'Special' && $category['title'] != 'Labels') { //Removing "Special" and "Labels"
@@ -412,10 +447,10 @@ final class FreshGReaderAPI extends API {
 
 	private function getCategoryId(string $categoryName, string $session_id): int {
 		// First, try to find an existing category
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$categoriesResponse = self::categoriesResponse();
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			foreach ($categoriesResponse['content'] as $category) {
-				if ($category['title'] == $categoryName) {
+				if (nameMatches($category['title'], $categoryName)) {
 					return $category['id'];
 				}
 			}
@@ -428,8 +463,7 @@ final class FreshGReaderAPI extends API {
 		header('Content-Type: application/json; charset=UTF-8');
 		//header('Cache-Control: no-transform');
 
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
-		$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => -4], $session_id);
+		$categoriesResponse = self::categoriesResponse();
 		$subscriptions = [];
 		$categoryMap = [];
 
@@ -439,34 +473,27 @@ final class FreshGReaderAPI extends API {
 			}
 		}
 
-		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
-			foreach ($feedsResponse['content'] as $feed) {
-				if ($feed['id'] > 0) { //Removing "Special" and "Label" cat lists
-					$site_url = '';
-					try {
-						$pdo = Db::pdo();
-						$sth = $pdo->prepare("SELECT site_url FROM ttrss_feeds WHERE id = ? and owner_uid = ?");
-						$sth->execute([$feed['id'], $_SESSION['uid']]);
-						$site_url = $sth->fetch()[0];
-					} catch (PDOException $e) {
-						error_log("Database error when pulling feed url: " . $e->getMessage());
-						return false;
-					}
-					$subscriptions[] = [
-						'id' => 'feed/' . $feed['id'],
-						'title' => $feed['title'],
-						'categories' => [
-							[
-								'id' => 'user/-/label/' . $categoryMap[$feed['cat_id']],
-								'label' => $categoryMap[$feed['cat_id']]
-							]
-						],
-						'url' => isset($feed['feed_url']) ? $feed['feed_url'] : '',
-						'htmlUrl' => !empty($site_url) ? $site_url : '',
-						'iconUrl' => TTRSS_SELF_URL_PATH . '/public.php?op=feed_icon&id=' . $feed['id'] . '.ico' //TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
-					];
-				}
-			}
+		try {
+			$feeds = self::userFeeds();
+		} catch (PDOException $e) {
+			error_log("Database error when pulling feeds: " . $e->getMessage());
+			self::internalServerError();
+		}
+		foreach ($feeds as $feed) {
+			$categoryTitle = htmlspecialchars_decode($categoryMap[$feed['cat_id']] ?? '', ENT_QUOTES);
+			$subscriptions[] = [
+				'id' => 'feed/' . $feed['id'],
+				'title' => $feed['title'],
+				'categories' => [
+					[
+						'id' => 'user/-/label/' . $categoryTitle,
+						'label' => $categoryTitle
+					]
+				],
+				'url' => $feed['feed_url'] ?? '',
+				'htmlUrl' => $feed['site_url'] ?? '',
+				'iconUrl' => TTRSS_SELF_URL_PATH . '/public.php?op=feed_icon&id=' . $feed['id'] . '.ico' //TTRSS_SELF_URL_PATH . '/feed-icons/' . $feed['id'] . '.ico'
+			];
 		}
 		echo json_encode(['subscriptions' => $subscriptions], JSON_OPTIONS), "\n";
 		exit();
@@ -492,6 +519,17 @@ final class FreshGReaderAPI extends API {
 				error_log("Database error when renaming feed: " . $e->getMessage());
 				return false;
 			}
+		}
+	}
+
+	private function feedIdByUrl(string $url): int {
+		try {
+			$sth = Db::pdo()->prepare("SELECT id FROM ttrss_feeds WHERE feed_url = ? AND owner_uid = ?");
+			$sth->execute([$url, $_SESSION['uid']]);
+			return (int)$sth->fetchColumn();
+		} catch (PDOException $e) {
+			error_log("Database error when looking up feed: " . $e->getMessage());
+			return 0;
 		}
 	}
 
@@ -575,10 +613,10 @@ final class FreshGReaderAPI extends API {
 		$category_id = 0;
 		if ($add != '' && strpos($add, 'user/-/label/') === 0) {
 			$categoryName = substr($add, 13);
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+			$categoryResponse = self::categoriesResponse();
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
-					if ($category['title'] == $categoryName) {
+					if (nameMatches($category['title'], $categoryName)) {
 						$category_id = $category['id'];
 						break;
 					}
@@ -596,15 +634,7 @@ final class FreshGReaderAPI extends API {
 				if (is_numeric($streamUrl)) {
 					$feedId = (int)$streamUrl;
 				} else {
-					$feedResponse = self::callTinyTinyRssApi('getFeeds', [], $session_id);
-					if ($feedResponse && isset($feedResponse['status']) && $feedResponse['status'] == 0) {
-						foreach ($feedResponse['content'] as $feed) {
-							if ($feed['feed_url'] == $streamUrl) {
-								$feedId = $feed['id'];
-								break;
-							}
-						}
-					}
+					$feedId = self::feedIdByUrl($streamUrl);
 				}
 
 				$title = $titles[$i] ?? '';
@@ -719,7 +749,7 @@ final class FreshGReaderAPI extends API {
 		//header('Cache-Control: no-transform');
 
 		// Fetch categories
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$categoriesResponse = self::categoriesResponse();
 		if (!($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0)) {
 			self::internalServerError();
 		}
@@ -816,212 +846,62 @@ final class FreshGReaderAPI extends API {
 				break;
 		}
 
-		$starred = false;
-		$readonly = false;
-		if ($exclude_target == 'user/-/state/com.google/unread') {
-			$readonly = true;
-		}
-		
 		$itemRefs = [];
 		$totalFetched = 0;
 		$moreAvailable = false;
+		$nextContinuation = null;
 		$min_date = isset($start_time) ? intval($start_time) : 0;
 		$offset = $continuation ? intval($continuation) : 0;
-		
-		if ($view_mode == 'read_only') { //Read Articles
+
+		if ($view_mode != '') {
+			// Direct SQL for the major client queries (read, unread, starred, all). Pages are keyed on the last
+			// returned ref_id rather than OFFSET, and dates are compared as timestamps so indexes can be used (#16)
+			$ascending = ($order == 'o');
+			$where = ['a.owner_uid = ?'];
+			$args = [$_SESSION['uid']];
+			$join = '';
+			switch ($view_mode) {
+				case 'read_only':
+					$where[] = 'a.unread = false';
+					$where[] = "a.last_read >= (to_timestamp(?) AT TIME ZONE 'UTC')";
+					break;
+				case 'unread_only':
+					$where[] = 'a.unread = true';
+					break;
+				case 'starred':
+					$where[] = 'a.marked = true';
+					break;
+			}
+			if ($view_mode != 'read_only') {
+				$join = 'INNER JOIN ttrss_entries b ON a.ref_id = b.id';
+				$where[] = "b.date_entered >= (to_timestamp(?) AT TIME ZONE 'UTC')";
+			}
+			$args[] = $min_date;
+			if ($offset > 0) {
+				$where[] = $ascending ? 'a.ref_id > ?' : 'a.ref_id < ?';
+				$args[] = $offset;
+			}
+			$args[] = $count + 1; // one extra row tells us whether another page exists
+
 			try {
-				$pdo = Db::pdo();
-				if ($order == 'o') {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id FROM public.ttrss_user_entries where owner_uid = ? and unread = false and extract(epoch from last_read) >= ? order by ref_id ASC OFFSET ? LIMIT ?");
-				} else {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id FROM public.ttrss_user_entries where owner_uid = ? and unread = false and extract(epoch from last_read) >= ? order by ref_id DESC OFFSET ? LIMIT ?");
-				}
-				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
+				$sth = Db::pdo()->prepare("SELECT a.ref_id::varchar AS id FROM ttrss_user_entries a $join
+					WHERE " . implode(' AND ', $where) . "
+					ORDER BY a.ref_id " . ($ascending ? 'ASC' : 'DESC') . "
+					LIMIT ?");
+				$sth->execute($args);
 				$items = $sth->fetchAll(PDO::FETCH_ASSOC);
 			} catch (PDOException $e) {
-				error_log("Database error when pulling read items: " . $e->getMessage());
+				error_log("Database error when pulling item ids: " . $e->getMessage());
 				self::badRequest();
 			}
-			try {
-				$pdo = Db::pdo();
-				$sth = $pdo->prepare("SELECT count(*) FROM public.ttrss_user_entries where owner_uid = ? and unread <> false and extract(epoch from last_read) >= ?");
-				$sth->execute([$_SESSION['uid'], $min_date]);
-				$itemsleft = $sth->fetch()[0];
-			} catch (PDOException $e) {
-				error_log("Database error when pulling items left: " . $e->getMessage());
-				self::badRequest();
-			}
-			$itemCount = count($items);
-			$totalFetched = count($items);
-			$itemRefs = $items;
-			if ($itemsleft - $count - $offset > $itemCount) {
+			if (count($items) > $count) {
 				$moreAvailable = true;
+				array_pop($items);
 			}
-		} else if ($view_mode == 'unread_only') { //Unread Articles
-			try {
-				$pdo = Db::pdo();
-				if ($order == 'o') {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id
-					FROM public.ttrss_user_entries a
-					inner join
-					public.ttrss_entries b
-					on a.ref_id = b.id
-					where owner_uid = ?
-					and unread = true 
-					and extract(epoch from date_entered) >= ?
-					order by ref_id ASC 
-					OFFSET ?
-					LIMIT ?");
-				} else {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id
-					FROM public.ttrss_user_entries a
-					inner join
-					public.ttrss_entries b
-					on a.ref_id = b.id
-					where owner_uid = ?
-					and unread = true 
-					and extract(epoch from date_entered) >= ?
-					order by ref_id DESC 
-					OFFSET ?
-					LIMIT ?");
-				}
-				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
-				$items = $sth->fetchAll(PDO::FETCH_ASSOC);
-			} catch (PDOException $e) {
-				error_log("Database error when pulling unread items: " . $e->getMessage());
-				self::badRequest();
-			}
-			try {
-				$pdo = Db::pdo();
-				$sth = $pdo->prepare("SELECT count(*)
-				FROM public.ttrss_user_entries a
-				inner join
-				public.ttrss_entries b
-				on a.ref_id = b.id
-				where owner_uid = ?
-				and unread = true 
-				and extract(epoch from date_entered) >= ?");
-				$sth->execute([$_SESSION['uid'], $min_date]);
-				$itemsleft = $sth->fetch()[0];
-			} catch (PDOException $e) {
-				error_log("Database error when pulling items left: " . $e->getMessage());
-				self::badRequest();
-			}
-			$itemCount = count($items);
-			$totalFetched = count($items);
 			$itemRefs = $items;
-			if ($itemsleft - $count - $offset > $itemCount) {
-				$moreAvailable = true;
-			}
-		}
-		else if ($view_mode == 'starred') { //starred articles
-			try {
-				$pdo = Db::pdo();
-				if ($order == 'o') {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id
-					FROM public.ttrss_user_entries a
-					inner join
-					public.ttrss_entries b
-					on a.ref_id = b.id
-					where owner_uid = ?
-					and marked = true 
-					and extract(epoch from date_entered) >= ?
-					order by ref_id ASC 
-					OFFSET ?
-					LIMIT ?");
-				} else {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id
-					FROM public.ttrss_user_entries a
-					inner join
-					public.ttrss_entries b
-					on a.ref_id = b.id
-					where owner_uid = ?
-					and marked = true 
-					and extract(epoch from date_entered) >= ?
-					order by ref_id DESC 
-					OFFSET ?
-					LIMIT ?");
-				}
-				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
-				$items = $sth->fetchAll(PDO::FETCH_ASSOC);
-			} catch (PDOException $e) {
-				error_log("Database error when pulling read items: " . $e->getMessage());
-				self::badRequest();
-			}
-			try {
-				$pdo = Db::pdo();
-				$sth = $pdo->prepare("SELECT count(*)
-				FROM public.ttrss_user_entries a
-				inner join
-				public.ttrss_entries b
-				on a.ref_id = b.id
-				where owner_uid = ?
-				and marked = true 
-				and extract(epoch from date_entered) >= ?");
-				$sth->execute([$_SESSION['uid'], $min_date]);
-				$itemsleft = $sth->fetch()[0];
-			} catch (PDOException $e) {
-				error_log("Database error when pulling items left: " . $e->getMessage());
-				self::badRequest();
-			}
-			$itemCount = count($items);
 			$totalFetched = count($items);
-			$itemRefs = $items;
-			if ($itemsleft - $count - $offset > $itemCount) {
-				$moreAvailable = true;
-			}
-		} else if ($view_mode == 'all_articles') { // all articles
-			try {
-				$pdo = Db::pdo();
-				if ($order == 'o') {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id
-					FROM public.ttrss_user_entries a
-					inner join
-					public.ttrss_entries b
-					on a.ref_id = b.id
-					where owner_uid = ?
-					and extract(epoch from date_entered) >= ?
-					order by ref_id ASC 
-					OFFSET ?
-					LIMIT ?");
-				} else {
-					$sth = $pdo->prepare("SELECT ref_id::varchar as id
-					FROM public.ttrss_user_entries a
-					inner join
-					public.ttrss_entries b
-					on a.ref_id = b.id
-					where owner_uid = ?
-					and extract(epoch from date_entered) >= ?
-					order by ref_id DESC 
-					OFFSET ?
-					LIMIT ?");
-				}
-				$sth->execute([$_SESSION['uid'], $min_date, $offset, $count]);
-				$items = $sth->fetchAll(PDO::FETCH_ASSOC);
-			} catch (PDOException $e) {
-				error_log("Database error when pulling read items: " . $e->getMessage());
-				self::badRequest();
-			}
-			try {
-				$pdo = Db::pdo();
-				$sth = $pdo->prepare("SELECT count(*)
-				FROM public.ttrss_user_entries a
-				inner join
-				public.ttrss_entries b
-				on a.ref_id = b.id
-				where owner_uid = ?
-				and extract(epoch from date_entered) >= ?");
-				$sth->execute([$_SESSION['uid'], $min_date]);
-				$itemsleft = $sth->fetch()[0];
-			} catch (PDOException $e) {
-				error_log("Database error when pulling items left: " . $e->getMessage());
-				self::badRequest();
-			}
-			$itemCount = count($items);
-			$totalFetched = count($items);
-			$itemRefs = $items;
-			if ($itemsleft - $count - $offset > $itemCount) {
-				$moreAvailable = true;
+			if ($moreAvailable) {
+				$nextContinuation = end($items)['id'];
 			}
 		} else {
 			// Set feed_id based on streamId
@@ -1070,7 +950,9 @@ final class FreshGReaderAPI extends API {
 			'itemRefs' => $itemRefs,
 		];
 	
-		if ($moreAvailable || ($totalFetched == $count)) {
+		if ($nextContinuation !== null) {
+			$result['continuation'] = $nextContinuation;
+		} else if ($view_mode == '' && ($moreAvailable || ($totalFetched == $count))) {
 			// There are more items available
 			$result['continuation'] = '' . ($continuation ? intval($continuation) : 0) + $totalFetched;
 		}
@@ -1084,11 +966,11 @@ final class FreshGReaderAPI extends API {
 
 	private function getCategoryLabelID($cat_id, $session_id) {
 		// First, check if it's a category
-		$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$categoryResponse = self::categoriesResponse();
 		$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 		if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 			foreach ($categoryResponse['content'] as $category) {
-				if ($category['title'] == $cat_id) {
+				if (nameMatches($category['title'], $cat_id)) {
 					return intval($category['id']);
 				}
 			}
@@ -1096,7 +978,7 @@ final class FreshGReaderAPI extends API {
 		// Not a Category, must be a label. Note that if a label and category have the same name, we'll always return the category
 		if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 			foreach ($labelsResponse['content'] as $label) {
-				if ($label['caption'] == $cat_id) {
+				if (nameMatches($label['caption'], $cat_id)) {
 					return (intval($label['id']));
 				}
 			}
@@ -1108,7 +990,7 @@ final class FreshGReaderAPI extends API {
 		//header('Cache-Control: no-transform');
 		
 		// Fetch categories
-		$categoriesResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+		$categoriesResponse = self::categoriesResponse();
 		$categoryMap = [];
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			foreach ($categoriesResponse['content'] as $category) {
@@ -1117,15 +999,16 @@ final class FreshGReaderAPI extends API {
 		}
 
 		// Fetch feeds to get the category mapping
-		$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => -4], $session_id);
 		$feedCategoryMap = [];
-		if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
-			foreach ($feedsResponse['content'] as $feed) {
+		try {
+			foreach (self::userFeeds() as $feed) {
 				$feedCategoryMap[$feed['id']] = [
 					'category_id' => $feed['cat_id'],
-					'category_name' => $categoryMap[$feed['cat_id']] ?? 'Uncategorized',
+					'category_name' => htmlspecialchars_decode($categoryMap[$feed['cat_id']] ?? 'Uncategorized', ENT_QUOTES),
 				];
 			}
+		} catch (PDOException $e) {
+			error_log("Database error when pulling feeds: " . $e->getMessage());
 		}
 		foreach ($e_ids as $i => $e_id) {
 			// https://feedhq.readthedocs.io/en/latest/api/terminology.html#items
@@ -1467,7 +1350,7 @@ final class FreshGReaderAPI extends API {
 				self::badRequest();
 			}
 			// First, check if it's a category
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+			$categoryResponse = self::categoriesResponse();
 			$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
@@ -1510,18 +1393,17 @@ final class FreshGReaderAPI extends API {
 			$tagName = substr($s, 13);
 
 			// First, check if it's a category
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+			$categoryResponse = self::categoriesResponse();
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
-					if (nameMatches($category['title'], $tagName)) {
+					if ($category['id'] > 0 && nameMatches($category['title'], $tagName)) {
 						// It's a category, so we need to move all feeds to uncategorized and then delete the category
-						$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => $category['id']], $session_id);
-						if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
-							foreach ($feedsResponse['content'] as $feed) {
-								if (!self::removeCategoryFeed($feed['id'], $_SESSION['uid'], $session_id)) {
-									self::badRequest();
-								}
-							}
+						try {
+							$sth = Db::pdo()->prepare("UPDATE ttrss_feeds SET cat_id = NULL WHERE cat_id = ? AND owner_uid = ?");
+							$sth->execute([$category['id'], $_SESSION['uid']]);
+						} catch (PDOException $e) {
+							error_log("Database error when removing category from feeds: " . $e->getMessage());
+							self::badRequest();
 						}
 						
 						// Now delete the category				
@@ -1591,10 +1473,10 @@ final class FreshGReaderAPI extends API {
 			$params['feed_id'] = substr($streamId, 5);
 		} elseif (strpos($streamId, 'user/-/label/') === 0) {
 			$categoryName = substr($streamId, 13);
-			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
+			$categoryResponse = self::categoriesResponse();
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
-					if ($category['title'] == $categoryName) {
+					if (nameMatches($category['title'], $categoryName)) {
 						$params['feed_id'] = $category['id'];
 						$params['is_cat'] = true;
 						break;
@@ -1703,6 +1585,7 @@ final class FreshGReaderAPI extends API {
 					$filter_target = $input['it'] ?? '';
 					//n=[integer] : The maximum number of results to return.
 					$count = isset($input['n']) ? (int)$input['n'] : 20;
+					$count = max(1, min($count, 10000)); // unbounded or negative values made the queries fail or run away
 					//r=[d|n|o] : Sort order of item results. d or n gives items in descending date order, o in ascending order.
 					$order = $input['r'] ?? 'd';
 					/* ot=[unix timestamp] : The time from which you want to retrieve
