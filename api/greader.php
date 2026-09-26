@@ -44,6 +44,13 @@ if ($headerAuth != '') {
 		if (isset($session_id)) {
 			session_id($session_id);
 			session_start();
+
+			// Apply the same checks as TT-RSS's own API entry point (api/index.php), so that changing the
+			// password, disabling the account, turning off API access or disabling FreshAPI revokes access
+			if (!empty($_SESSION['uid']) && !freshapiSessionAllowed((int)$_SESSION['uid'])) {
+				session_abort(); // don't persist the cleared session, just refuse this request
+				$_SESSION = [];
+			}
 		}
 	}
 }

@@ -66,28 +66,38 @@ function dateAdded(bool $raw = false, bool $microsecond = false) {
 	}
 }
 
+// Minimal request context for error logs. Never include request bodies, cookies or headers here:
+// they carry passwords (ClientLogin) and session tokens (Authorization)
 function debugInfo(): string {
-	if (function_exists('getallheaders')) {
-		$ALL_HEADERS = getallheaders();
-	} else {	//nginx	http://php.net/getallheaders#84262
-		$ALL_HEADERS = array();
-		foreach ($_SERVER as $name => $value) {
-			if (substr($name, 0, 5) === 'HTTP_') {
-				$ALL_HEADERS[str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))))] = $value;
-			}
-		}
+	$path = $_SERVER['PATH_INFO'] ?? ($_SERVER['ORIG_PATH_INFO'] ?? '');
+	return ($_SERVER['REQUEST_METHOD'] ?? '') . ' ' . $path . ' UA=' . ($_SERVER['HTTP_USER_AGENT'] ?? '');
+}
+
+function freshapiEnabledForUser(): bool {
+	// System-wide plugins are loaded by init_plugins(), per-user ones by UserHelper::load_user_plugins()
+	return PluginHost::getInstance()->get_plugin('FreshAPI') !== null;
+}
+
+// Mirrors the checks TT-RSS's api/index.php and API::before() apply to every request
+function freshapiSessionAllowed(int $uid): bool {
+	if (method_exists('Sessions', 'validate_session')) {
+		$valid = Sessions::validate_session();
+	} else { // TT-RSS releases before the Sessions class
+		$valid = \Sessions\validate_session();
 	}
-	global $ORIGINAL_INPUT;
-	$log = [
-			'date' => date('c'),
-			'headers' => $ALL_HEADERS,
-			'_SERVER' => $_SERVER,
-			'_GET' => $_GET,
-			'_POST' => $_POST,
-			'_COOKIE' => $_COOKIE,
-			'INPUT' => $ORIGINAL_INPUT,
-		];
-	return print_r($log, true);
+	if (!$valid) {
+		return false;
+	}
+	if (!Prefs::get(Prefs::ENABLE_API_ACCESS, $uid)) {
+		return false;
+	}
+	UserHelper::load_user_plugins($uid);
+	return freshapiEnabledForUser();
+}
+
+// Category and label names reach clients HTML-decoded (see tagList), while older TT-RSS versions stored them escaped
+function nameMatches(?string $stored, string $wanted): bool {
+	return $stored !== null && ($stored === $wanted || htmlspecialchars_decode($stored, ENT_QUOTES) === $wanted);
 }
 
 if (PHP_INT_SIZE < 8) {	//32-bit
@@ -124,7 +134,6 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function badRequest() {
-		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 400 Bad Request');
 		header('Content-Type: text/plain; charset=UTF-8');
@@ -133,7 +142,6 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function unauthorized() {
-		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 401 Unauthorized');
 		header('Content-Type: text/plain; charset=UTF-8');
@@ -143,7 +151,6 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function internalServerError() {
-		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 500 Internal Server Error');
 		header('Content-Type: text/plain; charset=UTF-8');
@@ -152,7 +159,6 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function notImplemented() {
-		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 501 Not Implemented');
 		header('Content-Type: text/plain; charset=UTF-8');
@@ -161,7 +167,6 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function serviceUnavailable() {
-		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 503 Service Unavailable');
 		header('Content-Type: text/plain; charset=UTF-8');
@@ -170,27 +175,10 @@ final class FreshGReaderAPI extends API {
 
 	/** @return never */
 	private function apiNotEnabled() {
-		error_log(__METHOD__);
 		error_log(__METHOD__ . ' ' . debugInfo());
 		header('HTTP/1.1 503 Service Unavailable');
 		header('Content-Type: text/plain; charset=UTF-8');
-		die('API Not Enabled in TT-RSS Pref Pane!');
-	}
-
-	/** @return never */
-	private function checkCompatibility() {
-		error_log(__METHOD__);
-		error_log(__METHOD__ . ' ' . debugInfo());
-		header('Content-Type: text/plain; charset=UTF-8');
-		if (PHP_INT_SIZE < 8 && !function_exists('gmp_init')) {
-			die('FAIL 64-bit or GMP extension! Wrong PHP configuration.');
-		}
-		$headerAuth = headerVariable('Authorization', 'GoogleLogin_auth');
-		if ($headerAuth == '') {
-			die('FAIL get HTTP Authorization header! Wrong Web server configuration.');
-		}
-		echo 'PASS';
-		exit();
+		die('API access or the FreshAPI plugin is not enabled for this user in the TT-RSS Preferences!');
 	}
 
     private function triggerGarbageCollection(): void {
@@ -202,6 +190,8 @@ final class FreshGReaderAPI extends API {
         }
     }
 
+    private string $capturedOutput = '';
+
     // Function to make API requests with session management
     private function callTinyTinyRssApi($operation, $params = [], $session_id = null) {
 		if ($session_id) {
@@ -209,26 +199,25 @@ final class FreshGReaderAPI extends API {
         }
 
         $params['op'] = $operation;
-        $_REQUEST = null;
+        $savedRequest = $_REQUEST;
         $_REQUEST = $params;
 
 		ob_start();
-		
-		if ($operation && method_exists($this, $operation)) {
-			$result = parent::$operation($_REQUEST);
-		} else  { //if (method_exists($handler, 'index'))
-			$result = $this->index($operation);
+		try {
+			if ($operation && method_exists($this, $operation)) {
+				$result = parent::$operation($_REQUEST);
+			} else  { //if (method_exists($handler, 'index'))
+				$result = $this->index($operation);
+			}
+		} finally {
+			$this->capturedOutput = (string)ob_get_clean();
+			$_REQUEST = $savedRequest;
 		}
-		$this->capturedOutput = ob_get_clean();
-		
+
 		// If the result is true (indicating success), return the captured output
 		if ($result === true) {
 			return json_decode($this->capturedOutput, true);
 		}
-
-        // The result is already wrapped, so we can return it directly
-		header("Api-Content-Length: " . ob_get_length());
-		ob_end_flush();
         return $result;
     }
 
@@ -245,7 +234,9 @@ final class FreshGReaderAPI extends API {
 			if (count($headerAuthX) === 2) {
 				$email = $headerAuthX[0];
 				$session_id = $headerAuthX[1];
-				if (self::isSessionActive($session_id)) {
+				// The token is "username/session_id": the username must belong to the session
+				$userMatches = Config::get(Config::SINGLE_USER_MODE) || strcasecmp($email, (string)($_SESSION['name'] ?? '')) === 0;
+				if ($userMatches && self::isSessionActive($session_id)) {
 					return $session_id;
 				}
 			}
@@ -253,26 +244,29 @@ final class FreshGReaderAPI extends API {
 		return '';
 	}
 
+	/** @return never */
 	private function clientLogin(string $email, string $password) {
-		$session_id = self::authorizationToUser();
-		if ($session_id == '') {
-			$loginResponse = self::callTinyTinyRssApi('login', [
-				'user' => $email,
-				'password' => $password
-			]);
-			if ($loginResponse && isset($loginResponse['status']) && $loginResponse['status'] == 0) {
-				$session_id = $loginResponse['content']['session_id'];
-			} else {
-				self::unauthorized();
-			}			
+		// Always check the credentials, even when the request also carries a valid session token
+		$loginResponse = self::callTinyTinyRssApi('login', [
+			'user' => $email,
+			'password' => $password
+		]);
+		if (!($loginResponse && isset($loginResponse['status']) && $loginResponse['status'] == 0)) {
+			self::unauthorized();
 		}
+		// API::login loads the user's plugins, so this reflects the per-user plugin preference
+		if (!freshapiEnabledForUser()) {
+			session_destroy();
+			self::apiNotEnabled();
+		}
+		$session_id = $loginResponse['content']['session_id'];
 		// Format the response as expected by Google Reader API clients
-		$auth = $email . '/' . $session_id;
+		$auth = ($_SESSION['name'] ?? $email) . '/' . $session_id;
 		$response = "SID={$auth}\n";
 		$response .= "LSID=\n";
 		$response .= "Auth={$auth}\n";
 		header('Content-Type: text/plain; charset=UTF-8');
-		//header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
+		header('Cache-Control: no-store');
 		echo $response;
 		exit();
 	}
@@ -281,51 +275,43 @@ final class FreshGReaderAPI extends API {
 	private function token(string $session_id) {
 		//http://blog.martindoms.com/2009/08/15/using-the-google-reader-api-part-1/
 		//https://github.com/ericmann/gReader-Library/blob/master/greader.class.php
-		//header('Cache-Control: no-store, no-cache, must-revalidate, no-transform');
-		if ($session_id === null || !self::isSessionActive($session_id)) {
+		// Clients request this token and send it back as T=, but it isn't verified: every endpoint already
+		// requires the Authorization header, which a cross-site request can't forge
+		if (!self::isSessionActive($session_id)) {
 			self::unauthorized();
 		}
 
-		$salt = null;
+		$salt = '';
 		try {
 			$pdo = Db::pdo();
 			$sth = $pdo->prepare("SELECT salt FROM ttrss_users WHERE id = ?");
 			$sth->execute([$_SESSION['uid']]);
-			$salt = $sth->fetch()[0];
+			$salt = (string)($sth->fetchColumn() ?: '');
 		} catch (PDOException $e) {
 			error_log("Database error when pulling salt: " . $e->getMessage());
 		}
-		if (isset($salt)) {
-			$token = substr(hash('sha256', $session_id . $salt),0,57);	//Must have 57 characters
-			echo $token, "\n";
-		}
+		echo substr(hash('sha256', $session_id . $salt), 0, 57), "\n";	//Must have 57 characters
 		exit();
 	}
 
-
-	private function checkToken(string $token, string $session_id): bool {
-		//http://code.google.com/p/google-reader-api/wiki/ActionToken
-		if ($session_id === null || !self::isSessionActive($session_id)) {
-			self::unauthorized();
-		}
-		$salt = null;
+	private function isReadOnlyUser(): bool {
 		try {
-			$pdo = Db::pdo();
-			$sth = $pdo->prepare("SELECT salt FROM ttrss_users WHERE id = ?");
+			$sth = Db::pdo()->prepare("SELECT access_level FROM ttrss_users WHERE id = ?");
 			$sth->execute([$_SESSION['uid']]);
-			$salt = $sth->fetch()[0];
+			return (int)$sth->fetchColumn() === UserHelper::ACCESS_LEVEL_READONLY;
 		} catch (PDOException $e) {
-			error_log("Database error when pulling salt: " . $e->getMessage());
+			error_log("Database error when checking access level: " . $e->getMessage());
+			return true;
 		}
-		if (isset($salt)) {
-			if ($token === substr(hash('sha256', $session_id . $salt),0,57)) {
-				return true;
-			} else if (($token === '') && (substr($_SERVER['HTTP_USER_AGENT'], 0, 6) == 'FeedMe')) { //FeedMe apparently doesn't use tokens? Adding exception now, but may do away with token checking alltogether 
-				return true;
-			}
+	}
+
+	// TT-RSS blocks read-only users from managing subscriptions; FreshAPI writes some of these tables directly
+	private function requireWriteAccess(): void {
+		if (self::isReadOnlyUser()) {
+			header('HTTP/1.1 403 Forbidden');
+			header('Content-Type: text/plain; charset=UTF-8');
+			die('Forbidden!');
 		}
-		error_log('Invalid POST token: ' . $token);
-		self::unauthorized();
 	}
 
 	/** @return never */
@@ -388,6 +374,10 @@ final class FreshGReaderAPI extends API {
 	/** @return never */
 	private function subscriptionImport(string $opml, string $session_id) {
 		
+		if (stripos($opml, '<opml') === false) {
+			self::badRequest();
+		}
+
 		$ttrss_root = dirname(__DIR__, 3);
 		$config_path = $ttrss_root . "/config.php";
 
@@ -395,18 +385,27 @@ final class FreshGReaderAPI extends API {
 			$ttrss_root = dirname(__DIR__, 2);
 		}
 
-		$tmp_file = $ttrss_root . '/' . Config::get(Config::CACHE_DIR) . '/upload/' . $_SESSION['name'] . '_opml_import.opml';
-		file_put_contents($tmp_file, $opml);
-		$upl_opml = new OPML($_REQUEST);
-		
-		ob_start();
+		$cache_dir = Config::get(Config::CACHE_DIR);
+		if (!str_starts_with($cache_dir, '/')) {
+			$cache_dir = $ttrss_root . '/' . $cache_dir;
+		}
+		// tempnam() creates a unique file (falling back to the system temp dir), so concurrent imports can't collide
+		$tmp_file = tempnam($cache_dir . '/upload', 'freshapi_opml_');
+		if ($tmp_file === false) {
+			self::internalServerError();
+		}
+		try {
+			file_put_contents($tmp_file, $opml);
+			$upl_opml = new OPML($_REQUEST);
 
-		$opml_imp = $upl_opml->opml_import($_SESSION["uid"], $tmp_file);
-		$capturedOutput = ob_get_clean();
-		ob_end_flush();
+			ob_start();
+			$upl_opml->opml_import($_SESSION["uid"], $tmp_file);
+			$capturedOutput = (string)ob_get_clean();
+		} finally {
+			@unlink($tmp_file);
+		}
 		$capturedOutput = preg_replace('/(&nbsp;|<br\/>)+/', "\n", $capturedOutput);
 		$capturedOutput = $capturedOutput . "Done!";
-		unlink($tmp_file);
 		echo $capturedOutput;
 		exit();
 	}
@@ -1416,10 +1415,13 @@ final class FreshGReaderAPI extends API {
 		$remove_label = null;
 
 		if ($a != '' && strpos($a, 'user/-/label/') === 0) {
-			$add_label = substr($a, 13);
+			$add_label = clean(substr($a, 13));
+			if ($add_label === '') {
+				$add_label = null;
+			}
 		}
 		if ($r != '' && strpos($r, 'user/-/label/') === 0) {
-			$remove_label = substr($r, 13);
+			$remove_label = clean(substr($r, 13));
 		}
 
 		if ($add_label !== null || $remove_label !== null) {
@@ -1460,15 +1462,16 @@ final class FreshGReaderAPI extends API {
 		if ($s != '' && strpos($s, 'user/-/label/') === 0 &&
 			$dest != '' && strpos($dest, 'user/-/label/') === 0) {
 			$oldName = substr($s, 13);
-			$newName = substr($dest, 13);
-			$oldName = htmlspecialchars($oldName, ENT_COMPAT, 'UTF-8');
-			$newName = htmlspecialchars($newName, ENT_COMPAT, 'UTF-8');
+			$newName = clean(substr($dest, 13));
+			if ($newName === '') {
+				self::badRequest();
+			}
 			// First, check if it's a category
 			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 			$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
-					if ($category['title'] == $oldName) {
+					if (nameMatches($category['title'], $oldName)) {
 						// It's a category, so we can rename it
 						try {
 							$pdo = Db::pdo();
@@ -1484,12 +1487,12 @@ final class FreshGReaderAPI extends API {
 			
 			if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 				foreach ($labelsResponse['content'] as $label) {
-					if ($label['caption'] == $oldName) {
+					if (nameMatches($label['caption'], $oldName)) {
 						// It's a label, so we can rename it
 						try {
 							$pdo = Db::pdo();
 							$sth = $pdo->prepare("UPDATE ttrss_labels2 SET caption = ? WHERE caption = ? AND owner_uid = ?");
-							$sth->execute([$newName, $oldName, $_SESSION['uid']]);
+							$sth->execute([$newName, $label['caption'], $_SESSION['uid']]);
 							exit('OK');
 						} catch (PDOException $e) {
 							error_log("Database error when renaming feed: " . $e->getMessage());
@@ -1505,13 +1508,12 @@ final class FreshGReaderAPI extends API {
 	private function disableTag(string $s, string $session_id) {
 		if ($s != '' && strpos($s, 'user/-/label/') === 0) {
 			$tagName = substr($s, 13);
-			$tagName = htmlspecialchars($tagName, ENT_COMPAT, 'UTF-8');
 
 			// First, check if it's a category
 			$categoryResponse = self::callTinyTinyRssApi('getCategories', ['include_empty' => true], $session_id);
 			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
 				foreach ($categoryResponse['content'] as $category) {
-					if ($category['title'] == $tagName) {
+					if (nameMatches($category['title'], $tagName)) {
 						// It's a category, so we need to move all feeds to uncategorized and then delete the category
 						$feedsResponse = self::callTinyTinyRssApi('getFeeds', ['cat_id' => $category['id']], $session_id);
 						if ($feedsResponse && isset($feedsResponse['status']) && $feedsResponse['status'] == 0) {
@@ -1535,11 +1537,11 @@ final class FreshGReaderAPI extends API {
 			$labelsResponse = self::callTinyTinyRssApi('getLabels', [], $session_id);
 			if ($labelsResponse && isset($labelsResponse['status']) && $labelsResponse['status'] == 0) {
 				foreach ($labelsResponse['content'] as $label) {
-					if ($label['caption'] == $tagName) {
+					if (nameMatches($label['caption'], $tagName)) {
 						try {
 							$pdo = Db::pdo();
 							$sth = $pdo->prepare("SELECT id FROM ttrss_labels2 WHERE caption = ? and owner_uid = ?");
-							$sth->execute([$tagName, $_SESSION['uid']]);
+							$sth->execute([$label['caption'], $_SESSION['uid']]);
 							$deletelabelid = $sth->fetch()[0];
 						} catch (PDOException $e) {
 							error_log("Database error when removing category from feed: " . $e->getMessage());
@@ -1786,6 +1788,7 @@ final class FreshGReaderAPI extends API {
 								self::subscriptionExport($session_id);
 								// Always exits
 							case 'import':
+								self::requireWriteAccess();
 								if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST' && $ORIGINAL_INPUT != '') {
 									self::subscriptionImport($ORIGINAL_INPUT, $session_id);
 								}
@@ -1797,6 +1800,7 @@ final class FreshGReaderAPI extends API {
 								// Always exits
 							case 'edit':
 								if (isset($ORIG_REQUEST['s'], $ORIG_REQUEST['ac'])) {
+									self::requireWriteAccess();
 									//StreamId to operate on. The parameter may be repeated to edit multiple subscriptions at once
 									$streamNames = empty($input['s']) && isset($input['s']) ? array($input['s']) : multiplePosts('s');
 									/* Title to use for the subscription. For the `subscribe` action,
@@ -1811,6 +1815,7 @@ final class FreshGReaderAPI extends API {
 								break;
 							case 'quickadd':	//https://github.com/theoldreader/api
 								if (isset($ORIG_REQUEST['quickadd'])) {
+									self::requireWriteAccess();
 									self::quickadd($ORIG_REQUEST['quickadd'], $session_id);
 								}
 								break;
@@ -1825,8 +1830,6 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case somethign goes wrong
 				case 'edit-tag':	//http://blog.martindoms.com/2010/01/20/using-the-google-reader-api-part-3/
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
 					$a = $input['a'] ?? '';	//Add:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$r = $input['r'] ?? '';	//Remove:	user/-/state/com.google/read	user/-/state/com.google/starred
 					$e_ids = multiplePosts('i');	//item IDs
@@ -1834,16 +1837,14 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case 
 				case 'rename-tag':    //https://github.com/theoldreader/api
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
+					self::requireWriteAccess();
 					$s = $input['s'] ?? '';    //user/-/label/Folder
 					$dest = $input['dest'] ?? '';    //user/-/label/NewFolder
 					self::renameTag($s, $dest, $session_id);
 					// Always exits
 					break; //just in case 
 				case 'disable-tag':    //https://github.com/theoldreader/api
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
+					self::requireWriteAccess();
 					$s_s = multiplePosts('s');
 					foreach ($s_s as $s) {
 						self::disableTag($s, $session_id);    //user/-/label/Folder
@@ -1851,8 +1852,6 @@ final class FreshGReaderAPI extends API {
 					// Always exits
 					break; //just in case 
 				case 'mark-all-as-read':
-					//$token = isset($input['T']) ? trim($input['T']) : '';
-					//self::checkToken($token, $session_id);
 					$streamId = trim($input['s'] ?? '');
 					$ts = trim($input['ts'] ?? '0');    //Older than timestamp in nanoseconds
 					if (!ctype_digit($ts)) {
