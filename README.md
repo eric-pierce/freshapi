@@ -35,6 +35,14 @@ If you are using another installation method you may need to make this PATH_INFO
 
 This plugin also uses backend components of the official auth_internal plugin, which is enabled by default with TT-RSS installs. If you've disabled this plugin you'll need to re-enable it to use freshapi.
 
+### OIDC / Single Sign-On
+
+Clients log in with a username and password, which TT-RSS checks through auth_internal. If you sign in to the web UI with an OIDC plugin (such as auth_oidc), keep auth_internal enabled alongside it (for example `TTRSS_PLUGINS=auth_internal,auth_oidc`), generate an App Password in the TT-RSS Preferences, and use your TT-RSS username with that App Password in your client.
+
+### Access and Revocation
+
+Client sessions are checked on every request. Changing your password, disabling your account, unchecking "Enable API", or disabling the freshapi plugin signs clients out, and they'll need to log in again.
+
 Please provide details about your setup in any issues you open.
 
 ## Installation
