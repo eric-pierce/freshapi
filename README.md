@@ -258,3 +258,7 @@ The Google Reader API is well documentated, below are some examples outlining it
 ## Disclaimer
 
 This project is not affiliated with or endorsed by FreshRSS, Google, or Tiny Tiny RSS. Use at your own risk.
+
+## AI Usage
+
+Starting in September 2026 I used Claude Code to identify and fix security issues and potential bugs.
