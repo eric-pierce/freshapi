@@ -23,7 +23,15 @@ set_include_path(implode(PATH_SEPARATOR, [
 require_once $ttrss_root . "/include/autoload.php";
 require_once $ttrss_root . "/include/sessions.php";
 require_once $ttrss_root . "/include/functions.php";
-require_once "./freshapi.php";
+require_once __DIR__ . "/freshapi.php";
+
+// Like TT-RSS's api/index.php, run from the TT-RSS root: relative paths such as LOCAL_PLUGINS_DIR ("plugins.local")
+// resolve against it, and per-user plugins (including this one) silently fail to load otherwise
+chdir($ttrss_root);
+
+// TT-RSS's ORM opens its own PDO connection by default, doubling Postgres connections per request (#16).
+// Hand it the connection Db::pdo() already uses instead.
+ORM::set_db(Db::pdo());
 
 define('NO_SESSION_AUTOSTART', true);
 define('TTRSS_SELF_URL_PATH', preg_replace('/(\/api\/{1,}|\/+plugins(.local)?\/.{1,}\/{1,})?(\w+\.php).*/', '', Config::get_self_url()));
@@ -41,9 +49,19 @@ if ($headerAuth != '') {
 	$headerAuthX = explode('/', $headerAuth, 2);
 	if (count($headerAuthX) === 2) {
 		$session_id = $headerAuthX[1];
-		if (isset($session_id)) {
+		// Only resume sessions that already exist: session_start() with an unknown id creates (and later saves)
+		// a new empty session, so any unauthenticated request with a made-up token added a row to ttrss_sessions
+		if (preg_match('/^[a-zA-Z0-9,-]{1,128}$/', $session_id)
+			&& (!method_exists('Sessions', 'exists') || Sessions::exists($session_id))) {
 			session_id($session_id);
 			session_start();
+
+			// Apply the same checks as TT-RSS's own API entry point (api/index.php), so that changing the
+			// password, disabling the account, turning off API access or disabling FreshAPI revokes access
+			if (!empty($_SESSION['uid']) && !freshapiSessionAllowed((int)$_SESSION['uid'])) {
+				session_abort(); // don't persist the cleared session, just refuse this request
+				$_SESSION = [];
+			}
 		}
 	}
 }
