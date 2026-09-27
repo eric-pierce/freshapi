@@ -52,18 +52,48 @@ Please provide details about your setup in any issues you open.
 
 ## Installation
 
-1. Clone this repository into your Tiny Tiny RSS plugins directory:
+1. Clone this repository into your Tiny Tiny RSS `plugins.local` directory.
+
+   **Official docker images:** the TT-RSS code lives on the `app` volume, which the `app`, `updater` and `web-nginx` containers share. From the directory with your `docker-compose.yml`, clone into it:
+   ```
+   docker compose exec -u app app git clone https://github.com/eric-pierce/freshapi.git /var/www/html/tt-rss/plugins.local/freshapi
+   ```
+
+   If you'd rather bind-mount the plugin from the host, mount it into the `web-nginx` container as well as `app` and `updater`. nginx runs in its own container and serves `greader.php` from its own copy of the files: with the plugin mounted into `app` only, freshapi still appears in Preferences but the API returns 404 ([#14](https://github.com/eric-pierce/freshapi/issues/14)). Keep the `app` mount writable, since the container's startup script changes ownership of the files and stops if it can't:
+   ```yml
+   services:
+     app:
+       volumes:
+         - app:/var/www/html
+         - ./freshapi:/var/www/html/tt-rss/plugins.local/freshapi
+     updater:
+       volumes:
+         - app:/var/www/html
+         - ./freshapi:/var/www/html/tt-rss/plugins.local/freshapi
+     web-nginx:
+       volumes:
+         - app:/var/www/html:ro
+         - ./freshapi:/var/www/html/tt-rss/plugins.local/freshapi:ro
+   ```
+
+   **Other installs:**
    ```
    cd tt-rss/plugins.local
    git clone https://github.com/eric-pierce/freshapi.git
-   ```  
+   ```
 2. Navigate to the Preferences menu in Tiny Tiny RSS, and check the box under "General" titled "Enable API"
    <img src="https://github.com/user-attachments/assets/f79e6fe3-bfb0-4989-a0fb-0bda4ac8b84d" width="800" />
   
 3. In Preferences, open the Plugin menu and enable "freshapi"
    <img src="https://github.com/user-attachments/assets/68260e5f-bcb8-4e14-a416-3d31104d9006" width="800" />
 
-4. To confirm that everything is configured correctly, visit ```https://yourdomain.com/tt-rss/plugins.local/freshapi/api/greader.php``` in a browser, and you should see the text "OK" displayed.
+4. To confirm that everything is configured correctly, visit ```https://yourdomain.com/tt-rss/plugins.local/freshapi/api/greader.php``` in a browser, and you should see the text "OK" displayed. Then check that API requests reach the plugin, using deliberately wrong credentials:
+   ```
+   curl -i -X POST --data 'Email=test&Passwd=test' https://yourdomain.com/tt-rss/plugins.local/freshapi/api/greader.php/accounts/ClientLogin
+   ```
+   A `401 Unauthorized` response means everything is wired up correctly. If not:
+   - **404 in the browser:** the web server can't see the plugin files. With the official docker images, make sure nginx can see them too (see step 1).
+   - **"OK" in the browser, but 404 from the curl command:** the web server isn't passing `PATH_INFO` to PHP. See [Non-Official Docker based Installs](#non-official-docker-based-installs).
 
 5. When configuring your mobile app, select either "FreshRSS" or "Google Reader API". You'll need to point your client to your TT-RSS installation, depending on your setup. If you're using a subdomain to host TT-RSS then use ```https://yoursubdomain.yourdomain.com``` instead of ```https://yourdomain.com``` in the requests below.
 
