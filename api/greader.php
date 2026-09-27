@@ -49,7 +49,10 @@ if ($headerAuth != '') {
 	$headerAuthX = explode('/', $headerAuth, 2);
 	if (count($headerAuthX) === 2) {
 		$session_id = $headerAuthX[1];
-		if (isset($session_id)) {
+		// Only resume sessions that already exist: session_start() with an unknown id creates (and later saves)
+		// a new empty session, so any unauthenticated request with a made-up token added a row to ttrss_sessions
+		if (preg_match('/^[a-zA-Z0-9,-]{1,128}$/', $session_id)
+			&& (!method_exists('Sessions', 'exists') || Sessions::exists($session_id))) {
 			session_id($session_id);
 			session_start();
 

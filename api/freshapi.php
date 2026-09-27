@@ -363,7 +363,7 @@ final class FreshGReaderAPI extends API {
 		$categoriesResponse = self::categoriesResponse();
 		if ($categoriesResponse && isset($categoriesResponse['status']) && $categoriesResponse['status'] == 0) {
 			foreach ($categoriesResponse['content'] as $category) {
-				if ($category['title'] != 'Special' && $category['title'] != 'Labels') { //Removing "Special" and "Labels"
+				if ($category['id'] != Feeds::CATEGORY_SPECIAL && $category['id'] != Feeds::CATEGORY_LABELS) { // by id: the titles are translated
 					$tags[] = [
 						'id' => isset($category['title']) ? 'user/-/label/' . htmlspecialchars_decode($category['title'], ENT_QUOTES) : null,
 						'type' => 'folder',
@@ -523,20 +523,28 @@ final class FreshGReaderAPI extends API {
 		}
 	}
 
-	private function addCategoryFeed(int $feedId, int $userId, string $session_id, int $category_id = -100, string $category_name = ''): bool {
+	/** Creates a folder and returns its id, or 0 on failure */
+	private function createCategory(string $name, int $userId): int {
+		$name = clean($name);
+		if ($name === '') {
+			return 0;
+		}
+		try {
+			$sth = Db::pdo()->prepare("INSERT INTO ttrss_feed_categories (title, owner_uid) VALUES (?, ?) RETURNING id");
+			$sth->execute([$name, $userId]);
+			return (int)$sth->fetchColumn();
+		} catch (PDOException $e) {
+			error_log("Database error when creating category: " . $e->getMessage());
+			return 0;
+		}
+	}
+
+	private function addCategoryFeed(int $feedId, int $userId, string $session_id, int $category_id): bool {
 		if (!self::isSessionActive($session_id)) {
 			exit();
 		}
 		try {
 			$pdo = Db::pdo();
-			$category_name = clean($category_name);
-			if ($category_id == -100 && $category_name != '') {
-				// Category doesn't exist, create it
-				$sth = $pdo->prepare("INSERT INTO ttrss_feed_categories (title, owner_uid) VALUES (?, ?)");
-				$sth->execute([$category_name, $userId]);
-				$category_id = $pdo->lastInsertId();
-			}
-	
 			// Now, update the feed with the new category
 			$sth = $pdo->prepare("UPDATE ttrss_feeds SET cat_id = ? WHERE id = ? AND owner_uid = ?");
 			return $sth->execute([$category_id, $feedId, $userId]);
@@ -600,16 +608,15 @@ final class FreshGReaderAPI extends API {
             self::unauthorized();
         }
 
+		// Target folder for subscribe/edit: 0 = none yet, -1 = "Uncategorized" (no folder)
 		$category_id = 0;
-		if ($add != '' && strpos($add, 'user/-/label/') === 0) {
-			$categoryName = substr($add, 13);
-			$categoryResponse = self::categoriesResponse();
-			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
-				foreach ($categoryResponse['content'] as $category) {
-					if (nameMatches($category['title'], $categoryName)) {
-						$category_id = $category['id'];
-						break;
-					}
+		$addName = ($add != '' && strpos($add, 'user/-/label/') === 0) ? substr($add, 13) : '';
+		if ($addName !== '') {
+			foreach (self::categoriesResponse()['content'] as $category) {
+				if (nameMatches($category['title'], $addName)) {
+					// the virtual categories (Uncategorized, Special, Labels) all mean "no folder"
+					$category_id = $category['id'] > 0 ? $category['id'] : -1;
+					break;
 				}
 			}
 		}
@@ -633,7 +640,7 @@ final class FreshGReaderAPI extends API {
 					case 'subscribe':
 						if ($feedId == 0) {
 							try {
-								self::subscribeFeed($streamUrl, $session_id, $category_id);
+								self::subscribeFeed($streamUrl, $session_id, max($category_id, 0));
 							} catch (Exception $e) {
 								error_log('subscribe error: ' . $e->getMessage());
 								self::badRequest();
@@ -652,17 +659,22 @@ final class FreshGReaderAPI extends API {
 						break;
 					case 'edit':
 						if ($feedId > 0) {
-							if ($add != '' && strpos($add, 'user/-/label/') === 0) {
-								$categoryName = substr($add, 13);
-								if ($category_id == 0) {
-									$category_id = -100;
-								}
-								if (!self::addCategoryFeed($feedId, $uid, $session_id, $category_id, $categoryName)) {
+							// Remove first: clients move a feed by sending both r=<old folder> and a=<new folder>,
+							// and applying the removal last left the feed without a folder
+							if ($remove != '' && strpos($remove, 'user/-/label/') === 0) {
+								if (!self::removeCategoryFeed($feedId, $uid, $session_id)) {
 									self::badRequest();
 								}
 							}
-							if ($remove != '' && strpos($remove, 'user/-/label/') === 0) {
-								if (!self::removeCategoryFeed($feedId, $uid, $session_id)) {
+							if ($addName !== '') {
+								if ($category_id == 0) {
+									// create the folder once, even when several feeds are moved into it
+									$category_id = self::createCategory($addName, $uid);
+								}
+								$ok = $category_id > 0
+									? self::addCategoryFeed($feedId, $uid, $session_id, $category_id)
+									: self::removeCategoryFeed($feedId, $uid, $session_id);
+								if (!$ok) {
 									self::badRequest();
 								}
 							}
@@ -771,6 +783,9 @@ final class FreshGReaderAPI extends API {
 			$lastUpdate = isset($counter['ts']) ? strval($counter['ts']) : '0';
 			$lastUpdate = str_pad($lastUpdate, 16, "0", STR_PAD_RIGHT);
 			if (isset($counter['kind']) && ($counter['kind'] == 'cat')) {
+				if ($counter['id'] == Feeds::CATEGORY_SPECIAL || $counter['id'] == Feeds::CATEGORY_LABELS) {
+					continue; // not folders; tag/list doesn't list them either
+				}
 				$categoryTitle = $categories[$counter['id']] ?? $counter['title'];
 				$id = 'user/-/label/' . htmlspecialchars_decode($categoryTitle, ENT_QUOTES);
 			} else if (isset($counter['title'])) {
@@ -802,72 +817,59 @@ final class FreshGReaderAPI extends API {
 
 	private function streamContentsItemsIds($streamId, $start_time, $stop_time, $count, $order, $filter_target, $exclude_target, $continuation, $session_id) {
 		header('Content-Type: application/json; charset=UTF-8');
-		$params = [
-			'limit' => $count ? intval($count) : 0, // Max articles to send to client
-			'skip' => $continuation ? intval($continuation) : 0, //May look at replacing this with since_id
-			//'since_id' => $start_time,
-			'include_attachments' => false,
-			'view_mode' => ($exclude_target == 'user/-/state/com.google/read') ? 'unread' : 'all_articles',
-			'feed_id' => -4, //setting to all articles by default
-			'order_by' => ($order == 'o') ? 'date_reverse' : 'feed_dates',
-		];
-		// Including SQL based pulling of the major queries from clients (read, unread, starred) as they're faster. For all others we'll use the API which is a bit slower
-		$view_mode = '';
+		// Everything is answered with one SQL query: states (read/starred/reading-list), feeds, folders and labels.
+		// Pages are keyed on the last returned ref_id rather than OFFSET, and the ot filter uses the time TT-RSS
+		// fetched the article (date_entered), so back-dated articles aren't dropped (#16)
+		$streamId = self::normalizeStreamId($streamId);
+		$where = ['a.owner_uid = ?'];
+		$args = [$_SESSION['uid']];
+		$readOnly = false;
+		$exists = true;
 		switch ($streamId) {
 			case 'user/-/state/com.google/read':
-				$view_mode = 'read_only';
-				break;
-			case 'user/-/state/com.google/reading-list':
-				if ($exclude_target == 'user/-/state/com.google/read') {
-					$view_mode = 'unread_only';
-				} else if ($exclude_target == 'user/-/state/com.google/unread') {
-					$view_mode = 'read_only';
-				} else {
-					$view_mode = 'all_articles';
-				}
+				$readOnly = true;
 				break;
 			case 'user/-/state/com.google/starred':
-				$view_mode = 'starred';
+				$where[] = 'a.marked = true';
 				break;
+			case 'user/-/state/com.google/reading-list':
+				break;
+			default:
+				$scope = self::streamScope($streamId, $session_id);
+				if ($scope === null) {
+					$exists = false;
+				} else {
+					$where = array_merge($where, $scope[0]);
+					$args = array_merge($args, $scope[1]);
+				}
 		}
-
-		$itemRefs = [];
-		$totalFetched = 0;
-		$moreAvailable = false;
-		$nextContinuation = null;
-		$min_date = isset($start_time) ? intval($start_time) : 0;
-		$offset = $continuation ? intval($continuation) : 0;
-
-		if ($view_mode != '') {
-			// Direct SQL for the major client queries (read, unread, starred, all). Pages are keyed on the last
-			// returned ref_id rather than OFFSET, and dates are compared as timestamps so indexes can be used (#16)
-			$ascending = ($order == 'o');
-			$where = ['a.owner_uid = ?'];
-			$args = [$_SESSION['uid']];
+		if ($exclude_target == 'user/-/state/com.google/unread') {
+			$readOnly = true;
+		}
+		if ($readOnly) {
+			// "read since ot" is based on when the article was marked read
+			$where[] = 'a.unread = false';
+			$where[] = "a.last_read >= (to_timestamp(?) AT TIME ZONE 'UTC')";
 			$join = '';
-			switch ($view_mode) {
-				case 'read_only':
-					$where[] = 'a.unread = false';
-					$where[] = "a.last_read >= (to_timestamp(?) AT TIME ZONE 'UTC')";
-					break;
-				case 'unread_only':
-					$where[] = 'a.unread = true';
-					break;
-				case 'starred':
-					$where[] = 'a.marked = true';
-					break;
+		} else {
+			if ($exclude_target == 'user/-/state/com.google/read') {
+				$where[] = 'a.unread = true';
 			}
-			if ($view_mode != 'read_only') {
-				$join = 'INNER JOIN ttrss_entries b ON a.ref_id = b.id';
-				$where[] = "b.date_entered >= (to_timestamp(?) AT TIME ZONE 'UTC')";
-			}
-			$args[] = $min_date;
-			if ($offset > 0) {
-				$where[] = $ascending ? 'a.ref_id > ?' : 'a.ref_id < ?';
-				$args[] = $offset;
-			}
-			$args[] = $count + 1; // one extra row tells us whether another page exists
+			$where[] = "b.date_entered >= (to_timestamp(?) AT TIME ZONE 'UTC')";
+			$join = 'INNER JOIN ttrss_entries b ON a.ref_id = b.id';
+		}
+		$args[] = isset($start_time) ? intval($start_time) : 0;
 
+		$ascending = ($order == 'o');
+		$offset = $continuation ? intval($continuation) : 0;
+		if ($offset > 0) {
+			$where[] = $ascending ? 'a.ref_id > ?' : 'a.ref_id < ?';
+			$args[] = $offset;
+		}
+		$args[] = $count + 1; // one extra row tells us whether another page exists
+
+		$items = [];
+		if ($exists) {
 			try {
 				$sth = Db::pdo()->prepare("SELECT a.ref_id::varchar AS id FROM ttrss_user_entries a $join
 					WHERE " . implode(' AND ', $where) . "
@@ -879,74 +881,51 @@ final class FreshGReaderAPI extends API {
 				error_log("Database error when pulling item ids: " . $e->getMessage());
 				self::badRequest();
 			}
-			if (count($items) > $count) {
-				$moreAvailable = true;
-				array_pop($items);
-			}
-			$itemRefs = $items;
-			$totalFetched = count($items);
-			if ($moreAvailable) {
-				$nextContinuation = end($items)['id'];
-			}
-		} else {
-			// Set feed_id based on streamId
-			if (strpos($streamId, 'feed/') === 0) {
-				$params['feed_id'] = substr($streamId, 5);
-			} elseif (strpos($streamId, 'user/-/label/') === 0) {
-				$cat_or_label = self::getCategoryLabelID(substr($streamId, 13), $session_id);
-				if ($cat_or_label > -10) { // below -10 are Labels, above are categories
-					$params['is_cat'] = true;
-				}
-				$params['feed_id'] = $cat_or_label; // Remove 'user/-/label/' prefix
-			}
-			while (($totalFetched < $count) && ($totalFetched <= 15000)) { //setting max cap just in case
-				$response = self::callTinyTinyRssApi('getHeadlines', $params, $session_id);
-	
-				if (!($response && isset($response['status']) && $response['status'] == 0)) {
-					self::internalServerError();
-				}
-		
-				$items = $response['content'];
-				$itemCount = count($items);
-	
-				foreach ($items as $article) {
-					if ($totalFetched < $count) {
-						if (intval($article['updated']) > $min_date) {
-							$itemRefs[] = [
-								'id' => '' . $article['id'],
-							];
-							$totalFetched++;
-						}
-					} else {
-						$moreAvailable = true;
-						break;
-					}
-				}
-		
-				if ($itemCount < 200) {
-					// We've reached the end of available items
-					break;
-				}
-				$params['skip'] += $itemCount;
-			}
 		}
 
-		$result = [
-			'itemRefs' => $itemRefs,
-		];
-	
-		if ($nextContinuation !== null) {
-			$result['continuation'] = $nextContinuation;
-		} else if ($view_mode == '' && ($moreAvailable || ($totalFetched == $count))) {
-			// There are more items available
-			$result['continuation'] = '' . ($continuation ? intval($continuation) : 0) + $totalFetched;
+		$result = ['itemRefs' => $items];
+		if (count($items) > $count) {
+			array_pop($result['itemRefs']);
+			$result['continuation'] = end($result['itemRefs'])['id'];
 		}
-		unset($itemRefs);
 		unset($items);
-		unset($response);
 		self::triggerGarbageCollection();
 		echo json_encode($result, JSON_OPTIONS), "\n";
 		exit();
+	}
+
+	// Some clients put their user id in stream ids (user/1234/state/...) instead of "-"
+	private static function normalizeStreamId(string $streamId): string {
+		return preg_replace('#^user/[^/]+/(state|label)/#', 'user/-/$1/', $streamId);
+	}
+
+	/**
+	 * SQL conditions (on ttrss_user_entries aliased "a") selecting the articles of a feed/ or user/-/label/ stream.
+	 * Returns null when the stream doesn't exist. Folders cover the feeds directly in them, as clients show them.
+	 * @return array{0: array<string>, 1: array<mixed>}|null
+	 */
+	private function streamScope(string $streamId, string $session_id): ?array {
+		if (str_starts_with($streamId, 'feed/')) {
+			$feed = substr($streamId, 5);
+			$feedId = is_numeric($feed) ? (int)$feed : self::feedIdByUrl($feed);
+			return $feedId > 0 ? [['a.feed_id = ?'], [$feedId]] : null;
+		}
+		if (str_starts_with($streamId, 'user/-/label/')) {
+			$id = self::getCategoryLabelID(substr($streamId, 13), $session_id);
+			if ($id === null) {
+				return null;
+			}
+			if ($id == Feeds::CATEGORY_UNCATEGORIZED) {
+				return [['a.feed_id IN (SELECT id FROM ttrss_feeds WHERE owner_uid = ? AND cat_id IS NULL)'], [$_SESSION['uid']]];
+			}
+			if ($id > 0) {
+				return [['a.feed_id IN (SELECT id FROM ttrss_feeds WHERE owner_uid = ? AND cat_id = ?)'], [$_SESSION['uid'], $id]];
+			}
+			if ($id < LABEL_BASE_INDEX) {
+				return [['a.ref_id IN (SELECT article_id FROM ttrss_user_labels2 WHERE label_id = ?)'], [Labels::feed_to_label_id($id)]];
+			}
+		}
+		return null; // unknown stream, or the virtual Special/Labels categories
 	}
 
 	private function getCategoryLabelID($cat_id, $session_id) {
@@ -1409,54 +1388,53 @@ final class FreshGReaderAPI extends API {
 	}
 
 	/**
-	 * @param numeric-string $olderThanId
+	 * Marks every unread article in a stream as read. With a ts cutoff, only articles TT-RSS had fetched before
+	 * that time are marked, so articles that arrived after the client last refreshed stay unread.
+	 * (The TT-RSS catchupFeed API supports neither label streams nor a cutoff: labels used to mark every
+	 * article read, and the cutoff was ignored.)
+	 * @param numeric-string $olderThan
 	 * @return never
 	 */
-	private function markAllAsRead(string $streamId, string $olderThanId, string $session_id) {
-		$params = [
-			'is_cat' => false,
-			'article_ids' => '',
-		];
+	private function markAllAsRead(string $streamId, string $olderThan, string $session_id) {
+		$streamId = self::normalizeStreamId($streamId);
+		$where = ['a.owner_uid = ?', 'a.unread = true', 'e.id = a.ref_id'];
+		$args = [$_SESSION['uid']];
 
-		if (strpos($streamId, 'feed/') === 0) {
-			$params['feed_id'] = substr($streamId, 5);
-		} elseif (strpos($streamId, 'user/-/label/') === 0) {
-			$categoryName = substr($streamId, 13);
-			$categoryResponse = self::categoriesResponse();
-			if ($categoryResponse && isset($categoryResponse['status']) && $categoryResponse['status'] == 0) {
-				foreach ($categoryResponse['content'] as $category) {
-					if (nameMatches($category['title'], $categoryName)) {
-						$params['feed_id'] = $category['id'];
-						$params['is_cat'] = true;
-						break;
-					}
-				}
+		if ($streamId === 'user/-/state/com.google/starred') {
+			$where[] = 'a.marked = true';
+		} elseif ($streamId !== 'user/-/state/com.google/reading-list') {
+			$scope = self::streamScope($streamId, $session_id);
+			if ($scope === null) {
+				self::badRequest();
 			}
-			if (!$params['is_cat']) {
-				// If not found as category, treat as label
-				$params['feed_id'] = -4; // All feeds
-				$params['is_cat'] = false;
-				$params['filter'] = ['type' => 'label', 'label' => $categoryName];
-			}
-		} elseif ($streamId === 'user/-/state/com.google/reading-list') {
-			$params['feed_id'] = -4; // All feeds
-		} else {
-			self::badRequest();
+			$where = array_merge($where, $scope[0]);
+			$args = array_merge($args, $scope[1]);
 		}
 
-		if ($olderThanId !== '0') {
-			// Convert olderThanId to a timestamp
-			$olderThanTimestamp = intval($olderThanId / 1000000); // Convert microseconds to seconds
-			$params['article_ids'] = 'FEED:' . $params['feed_id'] . ':' . $olderThanTimestamp;
+		$cutoff = self::timestampToSeconds($olderThan);
+		if ($cutoff > 0) {
+			$where[] = "e.date_entered < (to_timestamp(?) AT TIME ZONE 'UTC')";
+			$args[] = $cutoff;
 		}
 
-		$response = self::callTinyTinyRssApi('catchupFeed', $params, $session_id);
-
-		if ($response && isset($response['status']) && $response['status'] == 0) {
-			exit('OK');
-		} else {
+		try {
+			$sth = Db::pdo()->prepare("UPDATE ttrss_user_entries a SET unread = false, last_read = NOW()
+				FROM ttrss_entries e WHERE " . implode(' AND ', $where));
+			$sth->execute($args);
+		} catch (PDOException $e) {
+			error_log("Database error when marking stream as read: " . $e->getMessage());
 			self::internalServerError();
 		}
+		exit('OK');
+	}
+
+	// Clients send ts in microseconds per the spec, but some send seconds, milliseconds or nanoseconds
+	private static function timestampToSeconds(string $ts): int {
+		$value = (int)$ts;
+		if ($value >= 100000000000000000) return intdiv($value, 1000000000);
+		if ($value >= 100000000000000) return intdiv($value, 1000000);
+		if ($value >= 100000000000) return intdiv($value, 1000);
+		return $value;
 	}
 
 	/** @return never */
