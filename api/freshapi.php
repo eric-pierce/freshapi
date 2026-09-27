@@ -1514,7 +1514,10 @@ final class FreshGReaderAPI extends API {
 					$filter_target = $input['it'] ?? '';
 					//n=[integer] : The maximum number of results to return.
 					$count = isset($input['n']) ? (int)$input['n'] : 20;
-					$count = max(1, min($count, 10000)); // unbounded or negative values made the queries fail or run away
+					if ($count < 1) {
+						$count = 20; // zero or negative values made the queries fail
+					}
+					$count = min($count, 10000); // unbounded values let a single request run away
 					//r=[d|n|o] : Sort order of item results. d or n gives items in descending date order, o in ascending order.
 					$order = $input['r'] ?? 'd';
 					/* ot=[unix timestamp] : The time from which you want to retrieve

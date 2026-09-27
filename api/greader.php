@@ -23,7 +23,11 @@ set_include_path(implode(PATH_SEPARATOR, [
 require_once $ttrss_root . "/include/autoload.php";
 require_once $ttrss_root . "/include/sessions.php";
 require_once $ttrss_root . "/include/functions.php";
-require_once "./freshapi.php";
+require_once __DIR__ . "/freshapi.php";
+
+// Like TT-RSS's api/index.php, run from the TT-RSS root: relative paths such as LOCAL_PLUGINS_DIR ("plugins.local")
+// resolve against it, and per-user plugins (including this one) silently fail to load otherwise
+chdir($ttrss_root);
 
 // TT-RSS's ORM opens its own PDO connection by default, doubling Postgres connections per request (#16).
 // Hand it the connection Db::pdo() already uses instead.
