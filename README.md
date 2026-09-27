@@ -37,7 +37,12 @@ This plugin also uses backend components of the official auth_internal plugin, w
 
 ### OIDC / Single Sign-On
 
-Clients log in with a username and password, which TT-RSS checks through auth_internal. If you sign in to the web UI with an OIDC plugin (such as auth_oidc), keep auth_internal enabled alongside it (for example `TTRSS_PLUGINS=auth_internal,auth_oidc`), generate an App Password in the TT-RSS Preferences, and use your TT-RSS username with that App Password in your client.
+Clients log in with a username and password, which TT-RSS checks through auth_internal. OIDC plugins such as [auth_oidc](https://github.com/tt-rss/tt-rss-plugin-auth-oidc) only handle browser logins, so to use FreshAPI with an OIDC account:
+
+1. Keep auth_internal enabled alongside the OIDC plugin. With the official docker images that means adding auth_oidc to the default list: `TTRSS_PLUGINS=auth_internal, auth_oidc, note, nginx_xaccel`. With auth_internal disabled, App Passwords aren't offered and every client login fails.
+2. Sign in to the web UI with OIDC. In Preferences, check "Enable API" and enable the freshapi plugin.
+3. Under Preferences → Personal data / Authentication → App passwords, generate a password for your client.
+4. In your client, use your TT-RSS username and the App Password. For auth_oidc users the username is the lowercased `preferred_username` claim by default (set by `TTRSS_AUTH_OIDC_CLIENT_USERNAME_CLAIM`), not your email address. Your OIDC provider's password won't work here.
 
 ### Access and Revocation
 
