@@ -1107,7 +1107,26 @@ final class FreshGReaderAPI extends API {
 		exit();
 	}
 
+	// Some feeds give articles placeholder dates (e.g. Go's zero time, 0001-01-01), which reached clients as
+	// negative timestamps. Fall back to when TT-RSS fetched the article.
+	private function articleTimestamp(array $article): int {
+		$updated = (int)($article['updated'] ?? 0);
+		if ($updated > 0) {
+			return $updated;
+		}
+		try {
+			$sth = Db::pdo()->prepare("SELECT extract(epoch FROM date_entered)::bigint FROM ttrss_entries WHERE id = ?");
+			$sth->execute([(int)$article['id']]);
+			$entered = (int)$sth->fetchColumn();
+		} catch (PDOException $e) {
+			error_log("Database error when pulling article date: " . $e->getMessage());
+			$entered = 0;
+		}
+		return $entered > 0 ? $entered : time();
+	}
+
 	private function convertTtrssArticleToGreaderFormat($article) {
+		$article['updated'] = self::articleTimestamp($article);
 		$formatted_article = [
 			'id' => 'tag:google.com,2005:reader/item/' . dec2hex(strval($article['id'])),
 			'crawlTimeMsec' => $article['updated'] . '000',
